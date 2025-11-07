@@ -3,6 +3,7 @@ import express from 'express';
 import { pingDb } from './db';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/user';
+import profileRoutes from './routes/profile'; // ✅ Import profile routes
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -24,6 +25,7 @@ app.use((req, res, next) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/profile', profileRoutes); // ✅ Use profile routes
 
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));

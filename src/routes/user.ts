@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-
+import pool from '../db'; // ✅ Import the pool instance
 const router = Router();
 
 interface User {
@@ -27,35 +27,55 @@ export const setUsers = (usersArray: User[]) => {
 };
 
 // Get user profile
-router.get('/profile/:userId', (req: Request, res: Response) => {
+router.get('/profile/:userId', async (req: Request, res: Response) => {
   const userId = parseInt(req.params.userId);
-  const user = users.find(u => u.id === userId);
 
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+  try {
+    const { rows } = await pool.query(
+      'SELECT name, date_of_birth, major, year, hobby FROM profiles WHERE user_id = $1',
+      [userId]
+    );
+
+    if (rows.length > 0) {
+      return res.json({ profile: rows[0] });
+    }
+  } catch (err) {
+    console.error('DB error:', err);
   }
 
-  res.json({
-    profile: user.profile || {},
-    hasPartner: !!user.partnerId,
-  });
+  // fallback: 内存 users
+  const user = users.find(u => u.id === userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  res.json({ profile: user.profile || {} });
 });
 
-// Update user profile
-router.put('/profile/:userId', (req: Request, res: Response) => {
-  const userId = parseInt(req.params.userId);
-  const user = users.find(u => u.id === userId);
 
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+// Update user profile
+router.put('/profile/:userId', async (req: Request, res: Response) => {
+  const userId = parseInt(req.params.userId);
+  const { name, dateOfBirth, major, year, hobby } = req.body;
+
+  try {
+    await pool.query(
+      `INSERT INTO profiles (user_id, name, date_of_birth, major, year, hobby)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (user_id)
+       DO UPDATE SET name=$2, date_of_birth=$3, major=$4, year=$5, hobby=$6`,
+      [userId, name, dateOfBirth, major, year, hobby]
+    );
+  } catch (err) {
+    console.error('DB error:', err);
+    return res.status(500).json({ error: 'Failed to save profile' });
   }
 
-  user.profile = {
-    ...user.profile,
-    ...req.body,
-  };
+  // 保留原来的内存更新
+  const user = users.find(u => u.id === userId);
+  if (user) {
+    user.profile = { ...user.profile, ...req.body };
+  }
 
-  res.json({ profile: user.profile });
+  res.json({ profile: req.body });
 });
 
 // Generate connection code

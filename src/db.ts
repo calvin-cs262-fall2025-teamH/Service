@@ -10,6 +10,8 @@ export const pool = new Pool({
   max: 10,
 });
 
+export default pool;  // ✅ Export the pool instance
+
 export const query = (text: string, params?: any[]) => pool.query(text, params);
 
 export async function pingDb() {
