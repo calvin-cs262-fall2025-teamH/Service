@@ -3,9 +3,13 @@ import express from 'express';
 import { pingDb } from './db';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/user';
+import coupleRoutes from './routes/couple';
+import activitiesRoutes from './routes/activities';
+import calendarRoutes from './routes/calendar';
+import prayersRoutes from './routes/prayers';
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = parseInt(process.env.PORT || '4000', 10);
 app.use(cors({
   origin: true,
   credentials: false,
@@ -22,9 +26,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Auth & User routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 
+// New feature routes
+app.use('/api/couple', coupleRoutes);
+app.use('/api/activities', activitiesRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/prayers', prayersRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

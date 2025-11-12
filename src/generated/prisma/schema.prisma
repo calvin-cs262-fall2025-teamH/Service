@@ -4,14 +4,72 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id        String   @id @default(cuid())
+  id        Int      @id @default(autoincrement())
   email     String   @unique
   password  String
+  name      String?
+  coupleId  Int?     @unique
+  couple    Couple?  @relation("UserCouple", fields: [coupleId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Couple {
+  id             Int            @id @default(autoincrement())
+  inviteCode     String         @unique @default(cuid())
+  user1Id        Int?           @unique
+  user2Id        Int?           @unique
+  user1          User?          @relation("UserCouple")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  activities     Activity[]
+  prayerItems    PrayerItem[]
+}
+
+model Activity {
+  id            Int            @id @default(autoincrement())
+  coupleId      Int
+  couple        Couple         @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  date          DateTime
+  location      String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  photos        PhotoCollage[]
+  calendarEvent CalendarEvent?
+}
+
+model PhotoCollage {
+  id          Int      @id @default(autoincrement())
+  activityId  Int
+  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  photoUrl    String
+  caption     String?
+  createdAt   DateTime @default(now())
+}
+
+model CalendarEvent {
+  id          Int      @id @default(autoincrement())
+  activityId  Int      @unique
+  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  date        DateTime
+  title       String
+  location    String?
+  createdAt   DateTime @default(now())
+}
+
+model PrayerItem {
+  id        Int      @id @default(autoincrement())
+  coupleId  Int
+  couple    Couple   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
