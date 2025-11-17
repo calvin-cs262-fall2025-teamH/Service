@@ -1,75 +1,203 @@
 // Service/src/routes/auth.ts
-import { Router } from "express";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
-import { query } from "../db";
+import { Router } from 'express';
+import bcrypt from 'bcrypt';
+import { query } from '../db';
+import { authenticateToken, generateToken, AuthRequest } from '../middleware/auth';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 
+/**
+ * Helper to validate email format
+ */
+const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
 
-const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s);
-
-router.post("/register", async (req, res) => {
+/**
+ * POST /api/auth/register
+ * Register a new user with email and password
+ */
+router.post('/register', async (req, res) => {
   try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
-    if (!isEmail(email)) return res.status(400).json({ error: "Invalid email" });
-    if (String(password).length < 6) return res.status(400).json({ error: "Password too short (>=6)" });
+    const { email, password, name } = req.body;
 
-    const exists = await query("SELECT 1 FROM users WHERE email=$1", [email]);
-    if (exists.rowCount) return res.status(409).json({ error: "Email already registered" });
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
 
-    const hash = await bcrypt.hash(password, 10);
-    const insert = await query(
-      "INSERT INTO users(email, password_hash) VALUES($1,$2) RETURNING id, email, created_at",
-      [email, hash]
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email format'
+      });
+    }
+
+    if (String(password).length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long'
+      });
+    }
+
+    // Check if email already exists
+    const existingUser = await query(
+      'SELECT id FROM users WHERE email = $1',
+      [email.toLowerCase().trim()]
     );
-    const user = insert.rows[0];
 
+    if (existingUser.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Email already registered'
+      });
+    }
 
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ user, token });
-  } catch (e: any) {
-    console.error(e);
-    res.status(500).json({ error: "Server error" });
-  }
-});
+    // Hash password
+    const passwordHash = await bcrypt.hash(password, 10);
 
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+    // Create user
+    const result = await query(
+      'INSERT INTO users (email, password_hash, name, created_at) VALUES ($1, $2, $3, NOW()) RETURNING id, email, name, created_at',
+      [email.toLowerCase().trim(), passwordHash, name || null]
+    );
 
-    const result = await query("SELECT id, email, password_hash FROM users WHERE email=$1", [email]);
-    if (!result.rowCount) return res.status(400).json({ error: "Invalid credentials" });
     const user = result.rows[0];
 
-    const ok = await bcrypt.compare(String(password), user.password_hash);
-    if (!ok) return res.status(400).json({ error: "Invalid credentials" });
+    // Generate JWT token using centralized function
+    const token = generateToken(user.id, user.email);
 
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, user: { id: user.id, email: user.email } });
-  } catch (e: any) {
-    console.error(e);
-    res.status(500).json({ error: "Server error" });
+    res.status(201).json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          createdAt: user.created_at
+        },
+        token
+      },
+      message: 'Registration successful'
+    });
+  } catch (error: any) {
+    console.error('[auth] Register error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to register user'
+    });
   }
 });
 
-router.get("/me", async (req, res) => {
+/**
+ * POST /api/auth/login
+ * Authenticate user with email and password
+ */
+router.post('/login', async (req, res) => {
   try {
-    const auth = req.headers.authorization || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    if (!token) return res.status(401).json({ error: "No token" });
+    const { email, password } = req.body;
 
-    const payload = jwt.verify(token, JWT_SECRET) as { id: number; email: string };
-    const result = await query("SELECT id, email, created_at FROM users WHERE id=$1", [payload.id]);
-    if (!result.rowCount) return res.status(404).json({ error: "User not found" });
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
 
-    res.json({ user: result.rows[0] });
-  } catch (e: any) {
-    console.error(e);
-    res.status(401).json({ error: "Invalid token" });
+    // Find user by email
+    const result = await query(
+      'SELECT id, email, name, password_hash FROM users WHERE email = $1',
+      [email.toLowerCase().trim()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
+
+    const user = result.rows[0];
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
+
+    // Generate JWT token using centralized function
+    const token = generateToken(user.id, user.email);
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name
+        },
+        token
+      },
+      message: 'Login successful'
+    });
+  } catch (error: any) {
+    console.error('[auth] Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to login'
+    });
+  }
+});
+
+/**
+ * GET /api/auth/me
+ * Get current user info from token (protected route)
+ */
+router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+
+    const result = await query(
+      'SELECT id, email, name, couple_id, created_at FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = result.rows[0];
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          coupleId: user.couple_id,
+          createdAt: user.created_at
+        }
+      }
+    });
+  } catch (error: any) {
+    console.error('[auth] Get user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user information'
+    });
   }
 });
 
