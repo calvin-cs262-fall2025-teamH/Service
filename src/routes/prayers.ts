@@ -6,14 +6,16 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 const router = Router();
 
 /**
- * Helper function to get and validate user's couple_id
+ * Helper function to get user's partnership_id
  */
-async function getUserCoupleId(userId: number): Promise<number | null> {
+async function getUserPartnershipId(userId: number): Promise<number | null> {
   const result = await query(
-    'SELECT couple_id FROM users WHERE id = $1',
+    `SELECT id FROM partnerships
+     WHERE (user1_id = $1 OR user2_id = $1)
+     LIMIT 1`,
     [userId]
   );
-  return result.rows[0]?.couple_id || null;
+  return result.rows[0]?.id || null;
 }
 
 /**
@@ -39,20 +41,20 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
+    const partnershipId = await getUserPartnershipId(userId);
+    if (!partnershipId) {
       return res.status(400).json({
         success: false,
-        message: 'You must be part of a couple to create prayer items'
+        message: 'You must be part of a partnership to create prayer items'
       });
     }
 
     // Create prayer item
     const result = await query(
-      `INSERT INTO prayer_items (couple_id, title, content, is_answered, created_at, updated_at)
-       VALUES ($1, $2, $3, FALSE, NOW(), NOW())
-       RETURNING id, couple_id, title, content, is_answered, answered_at, created_at, updated_at`,
-      [coupleId, title.trim(), content.trim()]
+      `INSERT INTO prayer_items (partnership_id, added_by_user_id, title, description, is_answered, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, FALSE, NOW(), NOW())
+       RETURNING id, partnership_id, added_by_user_id, title, description, is_answered, answered_at, created_at, updated_at`,
+      [partnershipId, userId, title.trim(), content.trim()]
     );
 
     const prayer = result.rows[0];
@@ -61,9 +63,9 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
       success: true,
       data: {
         id: prayer.id,
-        coupleId: prayer.couple_id,
+        coupleId: prayer.partnership_id,
         title: prayer.title,
-        content: prayer.content,
+        content: prayer.description,
         isAnswered: prayer.is_answered,
         answeredAt: prayer.answered_at,
         createdAt: prayer.created_at,
@@ -82,40 +84,40 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
 
 /**
  * GET /api/prayers
- * Get all prayer items for the user's couple
+ * Get all prayer items for the user's partnership
  */
 router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
     console.log('[prayers] Request from userId:', userId);
 
-    const coupleId = await getUserCoupleId(userId);
-    console.log('[prayers] User coupleId:', coupleId);
-    if (!coupleId) {
-      console.log('[prayers] No couple found, returning empty array');
+    const partnershipId = await getUserPartnershipId(userId);
+    console.log('[prayers] User partnershipId:', partnershipId);
+    if (!partnershipId) {
+      console.log('[prayers] No partnership found, returning empty array');
       return res.json({
         success: true,
         data: [],
-        message: 'No couple found'
+        message: 'No partnership found'
       });
     }
 
     // Get all prayer items
     const result = await query(
-      `SELECT id, couple_id, title, content, is_answered, answered_at, created_at, updated_at
+      `SELECT id, partnership_id, title, description, is_answered, answered_at, created_at, updated_at
        FROM prayer_items
-       WHERE couple_id = $1
+       WHERE partnership_id = $1
        ORDER BY is_answered ASC, created_at DESC`,
-      [coupleId]
+      [partnershipId]
     );
 
     res.json({
       success: true,
       data: result.rows.map(row => ({
         id: row.id,
-        coupleId: row.couple_id,
+        coupleId: row.partnership_id,
         title: row.title,
-        content: row.content,
+        content: row.description,
         isAnswered: row.is_answered,
         answeredAt: row.answered_at,
         createdAt: row.created_at,
@@ -147,20 +149,20 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
+    const partnershipId = await getUserPartnershipId(userId);
+    if (!partnershipId) {
       return res.status(404).json({
         success: false,
-        message: 'No couple found'
+        message: 'No partnership found'
       });
     }
 
     // Get prayer item with permission check
     const result = await query(
-      `SELECT id, couple_id, title, content, is_answered, answered_at, created_at, updated_at
+      `SELECT id, partnership_id, title, description, is_answered, answered_at, created_at, updated_at
        FROM prayer_items
-       WHERE id = $1 AND couple_id = $2`,
-      [prayerId, coupleId]
+       WHERE id = $1 AND partnership_id = $2`,
+      [prayerId, partnershipId]
     );
 
     if (result.rows.length === 0) {
@@ -176,9 +178,9 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
       success: true,
       data: {
         id: prayer.id,
-        coupleId: prayer.couple_id,
+        coupleId: prayer.partnership_id,
         title: prayer.title,
-        content: prayer.content,
+        content: prayer.description,
         isAnswered: prayer.is_answered,
         answeredAt: prayer.answered_at,
         createdAt: prayer.created_at,
@@ -219,11 +221,11 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
+    const partnershipId = await getUserPartnershipId(userId);
+    if (!partnershipId) {
       return res.status(404).json({
         success: false,
-        message: 'No couple found'
+        message: 'No partnership found'
       });
     }
 
@@ -231,11 +233,11 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res) => {
     const result = await query(
       `UPDATE prayer_items
        SET title = COALESCE($1, title),
-           content = COALESCE($2, content),
+           description = COALESCE($2, description),
            updated_at = NOW()
-       WHERE id = $3 AND couple_id = $4
-       RETURNING id, couple_id, title, content, is_answered, answered_at, created_at, updated_at`,
-      [title, content, prayerId, coupleId]
+       WHERE id = $3 AND partnership_id = $4
+       RETURNING id, partnership_id, title, description, is_answered, answered_at, created_at, updated_at`,
+      [title, content, prayerId, partnershipId]
     );
 
     if (result.rows.length === 0) {
@@ -251,9 +253,9 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res) => {
       success: true,
       data: {
         id: prayer.id,
-        coupleId: prayer.couple_id,
+        coupleId: prayer.partnership_id,
         title: prayer.title,
-        content: prayer.content,
+        content: prayer.description,
         isAnswered: prayer.is_answered,
         answeredAt: prayer.answered_at,
         createdAt: prayer.created_at,
@@ -286,18 +288,18 @@ router.put('/:id/toggle-answered', authenticateToken, async (req: AuthRequest, r
       });
     }
 
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
+    const partnershipId = await getUserPartnershipId(userId);
+    if (!partnershipId) {
       return res.status(404).json({
         success: false,
-        message: 'No couple found'
+        message: 'No partnership found'
       });
     }
 
     // Get current state
     const currentResult = await query(
-      'SELECT is_answered FROM prayer_items WHERE id = $1 AND couple_id = $2',
-      [prayerId, coupleId]
+      'SELECT is_answered FROM prayer_items WHERE id = $1 AND partnership_id = $2',
+      [prayerId, partnershipId]
     );
 
     if (currentResult.rows.length === 0) {
@@ -316,9 +318,9 @@ router.put('/:id/toggle-answered', authenticateToken, async (req: AuthRequest, r
        SET is_answered = $1,
            answered_at = CASE WHEN $1 = TRUE THEN NOW() ELSE NULL END,
            updated_at = NOW()
-       WHERE id = $2 AND couple_id = $3
-       RETURNING id, couple_id, title, content, is_answered, answered_at, created_at, updated_at`,
-      [newAnswered, prayerId, coupleId]
+       WHERE id = $2 AND partnership_id = $3
+       RETURNING id, partnership_id, title, description, is_answered, answered_at, created_at, updated_at`,
+      [newAnswered, prayerId, partnershipId]
     );
 
     const prayer = result.rows[0];
@@ -327,9 +329,9 @@ router.put('/:id/toggle-answered', authenticateToken, async (req: AuthRequest, r
       success: true,
       data: {
         id: prayer.id,
-        coupleId: prayer.couple_id,
+        coupleId: prayer.partnership_id,
         title: prayer.title,
-        content: prayer.content,
+        content: prayer.description,
         isAnswered: prayer.is_answered,
         answeredAt: prayer.answered_at,
         createdAt: prayer.created_at,
@@ -362,18 +364,18 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
+    const partnershipId = await getUserPartnershipId(userId);
+    if (!partnershipId) {
       return res.status(404).json({
         success: false,
-        message: 'No couple found'
+        message: 'No partnership found'
       });
     }
 
     // Delete prayer item with permission check
     const result = await query(
-      'DELETE FROM prayer_items WHERE id = $1 AND couple_id = $2 RETURNING id',
-      [prayerId, coupleId]
+      'DELETE FROM prayer_items WHERE id = $1 AND partnership_id = $2 RETURNING id',
+      [prayerId, partnershipId]
     );
 
     if (result.rows.length === 0) {
