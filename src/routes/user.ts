@@ -14,15 +14,13 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
     const userId = req.userId!;
 
     const result = await query(
-      `SELECT u.id, u.email, u.name, u.couple_id, u.created_at,
+      `SELECT u.id, u.email, u.name, u.emoji, u.couple_id, u.created_at,
               c.user1_id, c.user2_id
        FROM users u
        LEFT JOIN couples c ON u.couple_id = c.id
        WHERE u.id = $1`,
       [userId]
     );
-
-    console.log('[user/profile] GET - userId:', userId, 'result:', result.rows[0]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -39,14 +37,15 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
     if (hasPartner) {
       const partnerId = user.user1_id === userId ? user.user2_id : user.user1_id;
       const partnerResult = await query(
-        'SELECT id, email, name FROM users WHERE id = $1',
+        'SELECT id, email, name, emoji FROM users WHERE id = $1',
         [partnerId]
       );
       if (partnerResult.rows.length > 0) {
         partner = {
           id: partnerResult.rows[0].id,
           email: partnerResult.rows[0].email,
-          name: partnerResult.rows[0].name
+          name: partnerResult.rows[0].name,
+          emoji: partnerResult.rows[0].emoji
         };
       }
     }
@@ -57,6 +56,7 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
         id: user.id,
         email: user.email,
         name: user.name,
+        emoji: user.emoji,
         coupleId: user.couple_id,
         hasPartner,
         partner,
@@ -79,11 +79,7 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
 router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    console.log('[user/profile] PUT request body:', JSON.stringify(req.body));
-    console.log('[user/profile] PUT request headers:', JSON.stringify(req.headers));
-    const { name } = req.body;
-
-    console.log('[user/profile] PUT request - userId:', userId, 'name:', name, 'type:', typeof name);
+    const { name, emoji } = req.body;
 
     if (name !== undefined && name !== null && String(name).trim().length === 0) {
       return res.status(400).json({
@@ -93,11 +89,11 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     const trimmedName = name ? String(name).trim() : null;
-    console.log('[user/profile] Updating with trimmedName:', trimmedName);
+    const trimmedEmoji = emoji ? String(emoji).trim() : null;
 
     const result = await query(
-      'UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, email, name, created_at',
-      [trimmedName, userId]
+      'UPDATE users SET name = COALESCE($1, name), emoji = COALESCE($2, emoji), updated_at = NOW() WHERE id = $3 RETURNING id, email, name, emoji, created_at',
+      [trimmedName, trimmedEmoji, userId]
     );
 
     if (result.rows.length === 0) {
@@ -113,6 +109,7 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
         id: result.rows[0].id,
         email: result.rows[0].email,
         name: result.rows[0].name,
+        emoji: result.rows[0].emoji,
         createdAt: result.rows[0].created_at
       },
       message: 'Profile updated successfully'
@@ -334,11 +331,10 @@ router.post('/partner/connect', authenticateToken, async (req: AuthRequest, res)
 router.get('/partner', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    console.log('[user] GET /partner - userId:', userId, 'type:', typeof userId);
 
     const result = await query(
       `SELECT u.couple_id, c.user1_id, c.user2_id, c.created_at,
-              p.id as partner_id, p.email as partner_email, p.name as partner_name
+              p.id as partner_id, p.email as partner_email, p.name as partner_name, p.emoji as partner_emoji
        FROM users u
        LEFT JOIN couples c ON u.couple_id = c.id
        LEFT JOIN users p ON (c.user1_id = p.id AND c.user2_id = u.id)
@@ -347,10 +343,7 @@ router.get('/partner', authenticateToken, async (req: AuthRequest, res) => {
       [userId]
     );
 
-    console.log('[user] GET /partner - query result rows:', result.rows.length);
-
     if (result.rows.length === 0 || !result.rows[0].couple_id) {
-      console.log('[user] GET /partner - No partner found');
       return res.json({
         success: true,
         data: null,
@@ -359,7 +352,6 @@ router.get('/partner', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     const data = result.rows[0];
-    console.log('[user] GET /partner - Found partner, couple_id:', data.couple_id);
 
     res.json({
       success: true,
@@ -369,7 +361,8 @@ router.get('/partner', authenticateToken, async (req: AuthRequest, res) => {
         partner: data.partner_id ? {
           id: data.partner_id,
           email: data.partner_email,
-          name: data.partner_name
+          name: data.partner_name,
+          emoji: data.partner_emoji
         } : null,
         connectedAt: data.created_at
       }
