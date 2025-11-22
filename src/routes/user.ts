@@ -13,56 +13,59 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
 
-    const result = await query(
-      `SELECT u.id, u.email, u.name, u.couple_id, u.created_at,
-              c.user1_id, c.user2_id
-       FROM users u
-       LEFT JOIN couples c ON u.couple_id = c.id
-       WHERE u.id = $1`,
-      [userId]
-    );
+    // 查询 users、couples 以及 profiles
+const result = await query(
+  `SELECT u.id, u.email, u.name AS user_name, u.couple_id, u.created_at,
+          p.name AS profile_name, p.date_of_birth, p.major, p.year, p.hobby,
+          c.user1_id, c.user2_id
+   FROM users u
+   LEFT JOIN profiles p ON p.user_id = u.id
+   LEFT JOIN couples c ON u.couple_id = c.id
+   WHERE u.id = $1`,
+  [userId]
+);
 
-    console.log('[user/profile] GET - userId:', userId, 'result:', result.rows[0]);
+if (result.rows.length === 0) {
+  return res.status(404).json({ success: false, message: 'User not found' });
+}
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
+const user = result.rows[0];
+const hasPartner = !!(user.couple_id && user.user1_id && user.user2_id);
 
-    const user = result.rows[0];
-    const hasPartner = !!(user.couple_id && user.user1_id && user.user2_id);
+// 获取 partner 信息
+let partner = null;
+if (hasPartner) {
+  const partnerId = user.user1_id === userId ? user.user2_id : user.user1_id;
+  const partnerResult = await query(
+    'SELECT id, email, name FROM users WHERE id = $1',
+    [partnerId]
+  );
+  if (partnerResult.rows.length > 0) {
+    partner = {
+      id: partnerResult.rows[0].id,
+      email: partnerResult.rows[0].email,
+      name: partnerResult.rows[0].name
+    };
+  }
+}
 
-    // Get partner info if exists
-    let partner = null;
-    if (hasPartner) {
-      const partnerId = user.user1_id === userId ? user.user2_id : user.user1_id;
-      const partnerResult = await query(
-        'SELECT id, email, name FROM users WHERE id = $1',
-        [partnerId]
-      );
-      if (partnerResult.rows.length > 0) {
-        partner = {
-          id: partnerResult.rows[0].id,
-          email: partnerResult.rows[0].email,
-          name: partnerResult.rows[0].name
-        };
-      }
-    }
-
-    res.json({
-      success: true,
-      data: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        coupleId: user.couple_id,
-        hasPartner,
-        partner,
-        createdAt: user.created_at
-      }
-    });
+res.json({
+  success: true,
+  data: {
+    id: user.id,
+    email: user.email,
+    name: user.user_name,
+    coupleId: user.couple_id,
+    hasPartner,
+    partner,
+    createdAt: user.created_at,
+    // 新增 profile 信息
+    dateOfBirth: user.date_of_birth,
+    major: user.major,
+    year: user.year,
+    hobby: user.hobby
+  }
+});
   } catch (error: any) {
     console.error('[user] Get profile error:', error);
     res.status(500).json({
