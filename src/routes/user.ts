@@ -13,56 +13,59 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
 
-    const result = await query(
-      `SELECT u.id, u.email, u.name, u.emoji, u.couple_id, u.created_at,
-              c.user1_id, c.user2_id
-       FROM users u
-       LEFT JOIN couples c ON u.couple_id = c.id
-       WHERE u.id = $1`,
-      [userId]
-    );
+    // 查询 users、couples 以及 profiles
+const result = await query(
+  `SELECT u.id, u.email, u.name AS user_name, u.couple_id, u.created_at,
+          p.name AS profile_name, p.date_of_birth, p.major, p.year, p.hobby,
+          c.user1_id, c.user2_id
+   FROM users u
+   LEFT JOIN profiles p ON p.user_id = u.id
+   LEFT JOIN couples c ON u.couple_id = c.id
+   WHERE u.id = $1`,
+  [userId]
+);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
+if (result.rows.length === 0) {
+  return res.status(404).json({ success: false, message: 'User not found' });
+}
 
-    const user = result.rows[0];
-    const hasPartner = !!(user.couple_id && user.user1_id && user.user2_id);
+const user = result.rows[0];
+const hasPartner = !!(user.couple_id && user.user1_id && user.user2_id);
 
-    // Get partner info if exists
-    let partner = null;
-    if (hasPartner) {
-      const partnerId = user.user1_id === userId ? user.user2_id : user.user1_id;
-      const partnerResult = await query(
-        'SELECT id, email, name, emoji FROM users WHERE id = $1',
-        [partnerId]
-      );
-      if (partnerResult.rows.length > 0) {
-        partner = {
-          id: partnerResult.rows[0].id,
-          email: partnerResult.rows[0].email,
-          name: partnerResult.rows[0].name,
-          emoji: partnerResult.rows[0].emoji
-        };
-      }
-    }
+// 获取 partner 信息
+let partner = null;
+if (hasPartner) {
+  const partnerId = user.user1_id === userId ? user.user2_id : user.user1_id;
+  const partnerResult = await query(
+    'SELECT id, email, name FROM users WHERE id = $1',
+    [partnerId]
+  );
+  if (partnerResult.rows.length > 0) {
+    partner = {
+      id: partnerResult.rows[0].id,
+      email: partnerResult.rows[0].email,
+      name: partnerResult.rows[0].name
+    };
+  }
+}
 
-    res.json({
-      success: true,
-      data: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        emoji: user.emoji,
-        coupleId: user.couple_id,
-        hasPartner,
-        partner,
-        createdAt: user.created_at
-      }
-    });
+res.json({
+  success: true,
+  data: {
+    id: user.id,
+    email: user.email,
+    name: user.user_name,
+    coupleId: user.couple_id,
+    hasPartner,
+    partner,
+    createdAt: user.created_at,
+    // 新增 profile 信息
+    dateOfBirth: user.date_of_birth,
+    major: user.major,
+    year: user.year,
+    hobby: user.hobby
+  }
+});
   } catch (error: any) {
     console.error('[user] Get profile error:', error);
     res.status(500).json({
@@ -79,42 +82,116 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
 router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const { name, emoji } = req.body;
+    const { name, dateOfBirth, major, year, hobby } = req.body || {};
 
-    if (name !== undefined && name !== null && String(name).trim().length === 0) {
+    const normalizeField = (value: unknown) => {
+      if (value === undefined) return undefined;
+      if (value === null) return null;
+      const trimmed = String(value).trim();
+      return trimmed.length > 0 ? trimmed : null;
+    };
+
+    const normalizedName = normalizeField(name);
+    if (name !== undefined && normalizedName === null) {
       return res.status(400).json({
         success: false,
         message: 'Name cannot be empty if provided'
       });
     }
 
-    const trimmedName = name ? String(name).trim() : null;
-    const trimmedEmoji = emoji ? String(emoji).trim() : null;
-
-    const result = await query(
-      'UPDATE users SET name = COALESCE($1, name), emoji = COALESCE($2, emoji), updated_at = NOW() WHERE id = $3 RETURNING id, email, name, emoji, created_at',
-      [trimmedName, trimmedEmoji, userId]
+    const normalizedProfile = {
+      dateOfBirth: normalizeField(dateOfBirth),
+      major: normalizeField(major),
+      year: normalizeField(year),
+      hobby: normalizeField(hobby)
+    };
+    const profileFieldsProvided = ['dateOfBirth', 'major', 'year', 'hobby'].some(
+      (field) => (req.body || {})[field] !== undefined
     );
 
-    if (result.rows.length === 0) {
+    const hasPayload = normalizedName !== undefined || profileFieldsProvided;
+    if (!hasPayload) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide at least one field to update'
+      });
+    }
+
+    await withTransaction(async (client) => {
+      const userCheck = await client.query('SELECT id FROM users WHERE id = $1', [userId]);
+      if (userCheck.rows.length === 0) {
+        throw new Error('USER_NOT_FOUND');
+      }
+
+      if (normalizedName !== undefined) {
+        await client.query(
+          'UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2',
+          [normalizedName, userId]
+        );
+      }
+
+      if (profileFieldsProvided) {
+        await client.query(
+          `INSERT INTO profiles (user_id, date_of_birth, major, year, hobby, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+           ON CONFLICT (user_id)
+           DO UPDATE SET
+             date_of_birth = EXCLUDED.date_of_birth,
+             major = EXCLUDED.major,
+             year = EXCLUDED.year,
+             hobby = EXCLUDED.hobby,
+             updated_at = NOW()`,
+          [
+            userId,
+            normalizedProfile.dateOfBirth,
+            normalizedProfile.major,
+            normalizedProfile.year,
+            normalizedProfile.hobby
+          ]
+        );
+      }
+    });
+
+    const updatedProfile = await query(
+      `SELECT u.id, u.email, u.name AS user_name, u.couple_id, u.created_at,
+              p.date_of_birth, p.major, p.year, p.hobby,
+              c.user1_id, c.user2_id
+       FROM users u
+       LEFT JOIN profiles p ON p.user_id = u.id
+       LEFT JOIN couples c ON u.couple_id = c.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+
+    if (updatedProfile.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
 
+    const user = updatedProfile.rows[0];
     res.json({
       success: true,
       data: {
-        id: result.rows[0].id,
-        email: result.rows[0].email,
-        name: result.rows[0].name,
-        emoji: result.rows[0].emoji,
-        createdAt: result.rows[0].created_at
+        id: user.id,
+        email: user.email,
+        name: user.user_name,
+        coupleId: user.couple_id,
+        dateOfBirth: user.date_of_birth,
+        major: user.major,
+        year: user.year,
+        hobby: user.hobby
       },
       message: 'Profile updated successfully'
     });
   } catch (error: any) {
+    if (error.message === 'USER_NOT_FOUND') {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
     console.error('[user] Update profile error:', error);
     res.status(500).json({
       success: false,
