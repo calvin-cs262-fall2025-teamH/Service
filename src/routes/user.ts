@@ -408,11 +408,10 @@ router.post('/partner/connect', authenticateToken, async (req: AuthRequest, res)
 router.get('/partner', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    console.log('[user] GET /partner - userId:', userId, 'type:', typeof userId);
 
     const result = await query(
       `SELECT u.couple_id, c.user1_id, c.user2_id, c.created_at,
-              p.id as partner_id, p.email as partner_email, p.name as partner_name
+              p.id as partner_id, p.email as partner_email, p.name as partner_name, p.emoji as partner_emoji
        FROM users u
        LEFT JOIN couples c ON u.couple_id = c.id
        LEFT JOIN users p ON (c.user1_id = p.id AND c.user2_id = u.id)
@@ -421,10 +420,7 @@ router.get('/partner', authenticateToken, async (req: AuthRequest, res) => {
       [userId]
     );
 
-    console.log('[user] GET /partner - query result rows:', result.rows.length);
-
     if (result.rows.length === 0 || !result.rows[0].couple_id) {
-      console.log('[user] GET /partner - No partner found');
       return res.json({
         success: true,
         data: null,
@@ -433,7 +429,6 @@ router.get('/partner', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     const data = result.rows[0];
-    console.log('[user] GET /partner - Found partner, couple_id:', data.couple_id);
 
     res.json({
       success: true,
@@ -443,7 +438,8 @@ router.get('/partner', authenticateToken, async (req: AuthRequest, res) => {
         partner: data.partner_id ? {
           id: data.partner_id,
           email: data.partner_email,
-          name: data.partner_name
+          name: data.partner_name,
+          emoji: data.partner_emoji
         } : null,
         connectedAt: data.created_at
       }

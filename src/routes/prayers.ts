@@ -6,7 +6,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 const router = Router();
 
 /**
- * Helper function to get and validate user's couple_id
+ * Helper function to get user's couple_id
  */
 async function getUserCoupleId(userId: number): Promise<number | null> {
   const result = await query(
@@ -49,10 +49,10 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
 
     // Create prayer item
     const result = await query(
-      `INSERT INTO prayer_items (couple_id, title, content, is_answered, created_at, updated_at)
-       VALUES ($1, $2, $3, FALSE, NOW(), NOW())
-       RETURNING id, couple_id, title, content, is_answered, answered_at, created_at, updated_at`,
-      [coupleId, title.trim(), content.trim()]
+      `INSERT INTO prayer_items (couple_id, added_by_user_id, title, description, is_answered, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, FALSE, NOW(), NOW())
+       RETURNING id, couple_id, added_by_user_id, title, description, is_answered, answered_at, created_at, updated_at`,
+      [coupleId, userId, title.trim(), content.trim()]
     );
 
     const prayer = result.rows[0];
@@ -63,7 +63,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
         id: prayer.id,
         coupleId: prayer.couple_id,
         title: prayer.title,
-        content: prayer.content,
+        content: prayer.description,
         isAnswered: prayer.is_answered,
         answeredAt: prayer.answered_at,
         createdAt: prayer.created_at,
@@ -87,12 +87,9 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
 router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    console.log('[prayers] Request from userId:', userId);
 
     const coupleId = await getUserCoupleId(userId);
-    console.log('[prayers] User coupleId:', coupleId);
     if (!coupleId) {
-      console.log('[prayers] No couple found, returning empty array');
       return res.json({
         success: true,
         data: [],
@@ -102,7 +99,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 
     // Get all prayer items
     const result = await query(
-      `SELECT id, couple_id, title, content, is_answered, answered_at, created_at, updated_at
+      `SELECT id, couple_id, title, description, is_answered, answered_at, created_at, updated_at
        FROM prayer_items
        WHERE couple_id = $1
        ORDER BY is_answered ASC, created_at DESC`,
@@ -115,7 +112,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
         id: row.id,
         coupleId: row.couple_id,
         title: row.title,
-        content: row.content,
+        content: row.description,
         isAnswered: row.is_answered,
         answeredAt: row.answered_at,
         createdAt: row.created_at,
@@ -157,7 +154,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 
     // Get prayer item with permission check
     const result = await query(
-      `SELECT id, couple_id, title, content, is_answered, answered_at, created_at, updated_at
+      `SELECT id, couple_id, title, description, is_answered, answered_at, created_at, updated_at
        FROM prayer_items
        WHERE id = $1 AND couple_id = $2`,
       [prayerId, coupleId]
@@ -178,7 +175,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
         id: prayer.id,
         coupleId: prayer.couple_id,
         title: prayer.title,
-        content: prayer.content,
+        content: prayer.description,
         isAnswered: prayer.is_answered,
         answeredAt: prayer.answered_at,
         createdAt: prayer.created_at,
@@ -231,10 +228,10 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res) => {
     const result = await query(
       `UPDATE prayer_items
        SET title = COALESCE($1, title),
-           content = COALESCE($2, content),
+           description = COALESCE($2, description),
            updated_at = NOW()
        WHERE id = $3 AND couple_id = $4
-       RETURNING id, couple_id, title, content, is_answered, answered_at, created_at, updated_at`,
+       RETURNING id, couple_id, title, description, is_answered, answered_at, created_at, updated_at`,
       [title, content, prayerId, coupleId]
     );
 
@@ -253,7 +250,7 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res) => {
         id: prayer.id,
         coupleId: prayer.couple_id,
         title: prayer.title,
-        content: prayer.content,
+        content: prayer.description,
         isAnswered: prayer.is_answered,
         answeredAt: prayer.answered_at,
         createdAt: prayer.created_at,
@@ -317,7 +314,7 @@ router.put('/:id/toggle-answered', authenticateToken, async (req: AuthRequest, r
            answered_at = CASE WHEN $1 = TRUE THEN NOW() ELSE NULL END,
            updated_at = NOW()
        WHERE id = $2 AND couple_id = $3
-       RETURNING id, couple_id, title, content, is_answered, answered_at, created_at, updated_at`,
+       RETURNING id, couple_id, title, description, is_answered, answered_at, created_at, updated_at`,
       [newAnswered, prayerId, coupleId]
     );
 
@@ -329,7 +326,7 @@ router.put('/:id/toggle-answered', authenticateToken, async (req: AuthRequest, r
         id: prayer.id,
         coupleId: prayer.couple_id,
         title: prayer.title,
-        content: prayer.content,
+        content: prayer.description,
         isAnswered: prayer.is_answered,
         answeredAt: prayer.answered_at,
         createdAt: prayer.created_at,

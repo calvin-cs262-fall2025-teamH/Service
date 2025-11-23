@@ -13,8 +13,8 @@ const PORT = parseInt(process.env.PORT || '4000', 10);
 app.use(cors({
   origin: true,
   credentials: false,
-  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.options('*', cors());
 
@@ -22,7 +22,10 @@ app.options('*', cors());
 app.use(express.json());
 
 app.use((req, res, next) => {
-  console.log('[' + new Date().toISOString() + '] ' + req.method + ' ' + req.url + ' from ' + req.ip);
+  // Only log non-GET requests or important endpoints to reduce noise
+  if (req.method !== 'GET' || req.url.includes('/profile') || req.url.includes('/partner/generate') || req.url.includes('/partner/connect')) {
+    console.log('[' + new Date().toISOString() + '] ' + req.method + ' ' + req.url + ' from ' + req.ip);
+  }
   next();
 });
 
