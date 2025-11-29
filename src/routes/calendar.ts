@@ -6,9 +6,9 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 const router = Router();
 
 /**
- * Helper function to get and validate user's couple_id
+ * Helper function to get and validate user's partnership_id (couple_id)
  */
-async function getUserCoupleId(userId: number): Promise<number | null> {
+async function getUserPartnershipId(userId: number): Promise<number | null> {
   const result = await query(
     'SELECT couple_id FROM users WHERE id = $1',
     [userId]
@@ -18,17 +18,17 @@ async function getUserCoupleId(userId: number): Promise<number | null> {
 
 /**
  * POST /api/calendar/events
- * Create a calendar event linked to an activity
+ * Create a new calendar event
  */
 router.post('/events', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const { activityId, date, title, location } = req.body;
+    const { date, time, endTime, title, description, eventType, isAllDay, location } = req.body;
 
-    if (!activityId || !date || !title) {
+    if (!date || !title) {
       return res.status(400).json({
         success: false,
-        message: 'Activity ID, date, and title are required'
+        message: 'Date and title are required'
       });
     }
 
@@ -41,33 +41,21 @@ router.post('/events', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
+    const partnershipId = await getUserPartnershipId(userId);
+    if (!partnershipId) {
       return res.status(400).json({
         success: false,
-        message: 'No couple found'
-      });
-    }
-
-    // Verify activity belongs to couple
-    const activityCheck = await query(
-      'SELECT id FROM activities WHERE id = $1 AND couple_id = $2',
-      [activityId, coupleId]
-    );
-
-    if (activityCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Activity not found or access denied'
+        message: 'No partnership found. Please connect with your partner first.'
       });
     }
 
     // Create calendar event
     const result = await query(
-      `INSERT INTO calendar_events (activity_id, date, title, location, created_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       RETURNING id, activity_id, date, title, location, created_at`,
-      [activityId, eventDate, title, location || null]
+      `INSERT INTO calendar_events
+       (partnership_id, added_by_user_id, title, description, event_date, event_time, end_time, is_all_day, event_type, location, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+       RETURNING *`,
+      [partnershipId, userId, title, description || null, date, time || null, endTime || null, isAllDay !== false, eventType || 'other', location || null]
     );
 
     const event = result.rows[0];
@@ -76,116 +64,115 @@ router.post('/events', authenticateToken, async (req: AuthRequest, res) => {
       success: true,
       data: {
         id: event.id,
-        activityId: event.activity_id,
-        date: event.date,
+        partnershipId: event.partnership_id,
+        addedBy: event.added_by_user_id,
         title: event.title,
+        description: event.description,
+        date: event.event_date,
+        time: event.event_time,
+        endTime: event.end_time,
+        isAllDay: event.is_all_day,
+        eventType: event.event_type,
         location: event.location,
-        createdAt: event.created_at
+        createdAt: event.created_at,
+        updatedAt: event.updated_at
       },
       message: 'Calendar event created successfully'
     });
   } catch (error: any) {
     console.error('[calendar] Create event error:', error);
-
-    // Handle unique constraint violation (activity already has event)
-    if (error.code === '23505') {
-      return res.status(409).json({
-        success: false,
-        message: 'This activity already has a calendar event'
-      });
-    }
-
     res.status(500).json({
       success: false,
-      message: 'Failed to create calendar event'
+      message: 'Failed to create calendar event',
+      error: error.message
     });
   }
 });
 
 /**
  * GET /api/calendar/events
- * Get all calendar events for the user's couple
+ * Get all calendar events for the user's partnership
  */
 router.get('/events', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
+    const partnershipId = await getUserPartnershipId(userId);
 
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
-      return res.json({
-        success: true,
-        data: [],
-        message: 'No couple found'
+    if (!partnershipId) {
+      return res.status(400).json({
+        success: false,
+        message: 'No partnership found'
       });
     }
 
-    // Get all calendar events with activity details
+    // Get all calendar events for this partnership
     const result = await query(
       `SELECT
-        ce.id, ce.activity_id, ce.date, ce.title, ce.location, ce.created_at,
-        a.title as activity_title, a.description as activity_description
+        ce.*,
+        u.name as added_by_name
        FROM calendar_events ce
-       JOIN activities a ON ce.activity_id = a.id
-       WHERE a.couple_id = $1
-       ORDER BY ce.date ASC`,
-      [coupleId]
+       LEFT JOIN users u ON ce.added_by_user_id = u.id
+       WHERE ce.partnership_id = $1
+       ORDER BY ce.event_date ASC, ce.event_time ASC NULLS LAST`,
+      [partnershipId]
     );
 
     res.json({
       success: true,
       data: result.rows.map(row => ({
         id: row.id,
-        activityId: row.activity_id,
-        date: row.date,
+        partnershipId: row.partnership_id,
+        addedBy: row.added_by_user_id,
+        addedByName: row.added_by_name,
         title: row.title,
+        description: row.description,
+        date: row.event_date,
+        time: row.event_time,
+        endTime: row.end_time,
+        isAllDay: row.is_all_day,
+        eventType: row.event_type,
         location: row.location,
-        activityTitle: row.activity_title,
-        activityDescription: row.activity_description,
-        createdAt: row.created_at
+        googleCalendarId: row.google_calendar_id,
+        appleCalendarId: row.apple_calendar_id,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
       }))
     });
   } catch (error: any) {
     console.error('[calendar] Get events error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get calendar events'
+      message: 'Failed to fetch calendar events'
     });
   }
 });
 
 /**
  * GET /api/calendar/events/:id
- * Get a specific calendar event
+ * Get a specific calendar event by ID
  */
 router.get('/events/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
     const eventId = parseInt(req.params.id);
+    const partnershipId = await getUserPartnershipId(userId);
 
-    if (isNaN(eventId)) {
+    if (!partnershipId) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid event ID'
-      });
-    }
-
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
-      return res.status(404).json({
-        success: false,
-        message: 'No couple found'
+        message: 'No partnership found'
       });
     }
 
     // Get event with permission check
     const result = await query(
       `SELECT
-        ce.id, ce.activity_id, ce.date, ce.title, ce.location, ce.created_at,
-        a.title as activity_title, a.description as activity_description
+        ce.*,
+        u.name as added_by_name
        FROM calendar_events ce
-       JOIN activities a ON ce.activity_id = a.id
-       WHERE ce.id = $1 AND a.couple_id = $2`,
-      [eventId, coupleId]
+       LEFT JOIN users u ON ce.added_by_user_id = u.id
+       WHERE ce.id = $1 AND ce.partnership_id = $2`,
+      [eventId, partnershipId]
     );
 
     if (result.rows.length === 0) {
@@ -201,20 +188,26 @@ router.get('/events/:id', authenticateToken, async (req: AuthRequest, res) => {
       success: true,
       data: {
         id: event.id,
-        activityId: event.activity_id,
-        date: event.date,
+        partnershipId: event.partnership_id,
+        addedBy: event.added_by_user_id,
+        addedByName: event.added_by_name,
         title: event.title,
-        location: event.location,
-        activityTitle: event.activity_title,
-        activityDescription: event.activity_description,
-        createdAt: event.created_at
+        description: event.description,
+        date: event.event_date,
+        time: event.event_time,
+        isAllDay: event.is_all_day,
+        eventType: event.event_type,
+        googleCalendarId: event.google_calendar_id,
+        appleCalendarId: event.apple_calendar_id,
+        createdAt: event.created_at,
+        updatedAt: event.updated_at
       }
     });
   } catch (error: any) {
     console.error('[calendar] Get event error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get calendar event'
+      message: 'Failed to fetch calendar event'
     });
   }
 });
@@ -227,58 +220,60 @@ router.put('/events/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
     const eventId = parseInt(req.params.id);
-    const { date, title, location } = req.body;
+    const { date, time, endTime, title, description, eventType, isAllDay, location } = req.body;
 
-    if (isNaN(eventId)) {
+    const partnershipId = await getUserPartnershipId(userId);
+    if (!partnershipId) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid event ID'
-      });
-    }
-
-    // Validate date if provided
-    if (date) {
-      const eventDate = new Date(date);
-      if (isNaN(eventDate.getTime())) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid date format'
-        });
-      }
-    }
-
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
-      return res.status(404).json({
-        success: false,
-        message: 'No couple found'
+        message: 'No partnership found'
       });
     }
 
     // Update event with permission check
     const result = await query(
-      `UPDATE calendar_events ce
-       SET date = COALESCE($1, ce.date),
-           title = COALESCE($2, ce.title),
-           location = COALESCE($3, ce.location)
-       FROM activities a
-       WHERE ce.activity_id = a.id
-         AND ce.id = $4
-         AND a.couple_id = $5
-       RETURNING ce.id, ce.activity_id, ce.date, ce.title, ce.location, ce.created_at`,
-      [date, title, location, eventId, coupleId]
+      `UPDATE calendar_events
+       SET event_date = COALESCE($1, event_date),
+           event_time = COALESCE($2, event_time),
+           end_time = COALESCE($3, end_time),
+           title = COALESCE($4, title),
+           description = COALESCE($5, description),
+           event_type = COALESCE($6, event_type),
+           is_all_day = COALESCE($7, is_all_day),
+           location = COALESCE($8, location),
+           updated_at = NOW()
+       WHERE id = $9
+         AND partnership_id = $10
+       RETURNING *`,
+      [date, time, endTime, title, description, eventType, isAllDay, location, eventId, partnershipId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Calendar event not found'
+        message: 'Calendar event not found or access denied'
       });
     }
 
+    const event = result.rows[0];
+
     res.json({
       success: true,
-      data: result.rows[0],
+      data: {
+        id: event.id,
+        partnershipId: event.partnership_id,
+        addedBy: event.added_by_user_id,
+        title: event.title,
+        description: event.description,
+        date: event.event_date,
+        time: event.event_time,
+        endTime: event.end_time,
+        isAllDay: event.is_all_day,
+        eventType: event.event_type,
+        location: event.location,
+        createdAt: event.created_at,
+        updatedAt: event.updated_at
+      },
       message: 'Calendar event updated successfully'
     });
   } catch (error: any) {
@@ -286,129 +281,6 @@ router.put('/events/:id', authenticateToken, async (req: AuthRequest, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update calendar event'
-    });
-  }
-});
-
-/**
- * GET /api/calendar/upcoming
- * Get upcoming events (next 30 days)
- */
-router.get('/upcoming', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.userId!;
-
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
-      return res.json({
-        success: true,
-        data: [],
-        message: 'No couple found'
-      });
-    }
-
-    // Get upcoming events within next 30 days
-    const result = await query(
-      `SELECT
-        ce.id, ce.activity_id, ce.date, ce.title, ce.location,
-        a.title as activity_title
-       FROM calendar_events ce
-       JOIN activities a ON ce.activity_id = a.id
-       WHERE a.couple_id = $1
-         AND ce.date >= CURRENT_DATE
-         AND ce.date <= CURRENT_DATE + INTERVAL '30 days'
-       ORDER BY ce.date ASC`,
-      [coupleId]
-    );
-
-    res.json({
-      success: true,
-      data: result.rows.map(row => ({
-        id: row.id,
-        activityId: row.activity_id,
-        date: row.date,
-        title: row.title,
-        location: row.location,
-        activityTitle: row.activity_title
-      }))
-    });
-  } catch (error: any) {
-    console.error('[calendar] Get upcoming events error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get upcoming events'
-    });
-  }
-});
-
-/**
- * GET /api/calendar/anniversaries
- * Calculate anniversaries based on couple creation date
- */
-router.get('/anniversaries', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.userId!;
-
-    // Get user's couple with creation date
-    const result = await query(
-      `SELECT id, created_at FROM couples
-       WHERE user1_id = $1 OR user2_id = $1`,
-      [userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.json({
-        success: true,
-        data: null,
-        message: 'No couple found'
-      });
-    }
-
-    const couple = result.rows[0];
-    const createdAt = new Date(couple.created_at);
-    const now = new Date();
-
-    // Calculate days together
-    const daysTogether = Math.floor(
-      (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    // Calculate months together
-    const monthsTogether =
-      (now.getFullYear() - createdAt.getFullYear()) * 12 +
-      (now.getMonth() - createdAt.getMonth());
-
-    // Calculate years together
-    const yearsTogether = Math.floor(monthsTogether / 12);
-
-    // Calculate next month anniversary date
-    const nextMonthAnniversary = new Date(createdAt);
-    nextMonthAnniversary.setMonth(createdAt.getMonth() + monthsTogether + 1);
-    // Handle day overflow (e.g., Jan 31 -> Feb 28)
-    if (nextMonthAnniversary.getDate() !== createdAt.getDate()) {
-      nextMonthAnniversary.setDate(0); // Set to last day of previous month
-    }
-
-    // Calculate next year anniversary date
-    const nextYearAnniversary = new Date(createdAt);
-    nextYearAnniversary.setFullYear(createdAt.getFullYear() + yearsTogether + 1);
-
-    res.json({
-      success: true,
-      data: {
-        startDate: createdAt,
-        daysTogether,
-        monthsTogether,
-        yearsTogether,
-        nextMonthAnniversary: nextMonthAnniversary > now ? nextMonthAnniversary : null,
-        nextYearAnniversary: nextYearAnniversary > now ? nextYearAnniversary : null
-      }
-    });
-  } catch (error: any) {
-    console.error('[calendar] Get anniversaries error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to calculate anniversaries'
     });
   }
 });
@@ -422,36 +294,27 @@ router.delete('/events/:id', authenticateToken, async (req: AuthRequest, res) =>
     const userId = req.userId!;
     const eventId = parseInt(req.params.id);
 
-    if (isNaN(eventId)) {
+    const partnershipId = await getUserPartnershipId(userId);
+    if (!partnershipId) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid event ID'
-      });
-    }
-
-    const coupleId = await getUserCoupleId(userId);
-    if (!coupleId) {
-      return res.status(404).json({
-        success: false,
-        message: 'No couple found'
+        message: 'No partnership found'
       });
     }
 
     // Delete event with permission check
     const result = await query(
-      `DELETE FROM calendar_events ce
-       USING activities a
-       WHERE ce.activity_id = a.id
-         AND ce.id = $1
-         AND a.couple_id = $2
-       RETURNING ce.id`,
-      [eventId, coupleId]
+      `DELETE FROM calendar_events
+       WHERE id = $1
+         AND partnership_id = $2
+       RETURNING id`,
+      [eventId, partnershipId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Calendar event not found'
+        message: 'Calendar event not found or access denied'
       });
     }
 
@@ -464,6 +327,136 @@ router.delete('/events/:id', authenticateToken, async (req: AuthRequest, res) =>
     res.status(500).json({
       success: false,
       message: 'Failed to delete calendar event'
+    });
+  }
+});
+
+/**
+ * GET /api/calendar/upcoming
+ * Get upcoming events within next 30 days
+ */
+router.get('/upcoming', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const partnershipId = await getUserPartnershipId(userId);
+
+    if (!partnershipId) {
+      return res.status(400).json({
+        success: false,
+        message: 'No partnership found'
+      });
+    }
+
+    // Get upcoming events within next 30 days
+    const result = await query(
+      `SELECT
+        ce.*,
+        u.name as added_by_name
+       FROM calendar_events ce
+       LEFT JOIN users u ON ce.added_by_user_id = u.id
+       WHERE ce.partnership_id = $1
+         AND ce.event_date >= CURRENT_DATE
+         AND ce.event_date <= CURRENT_DATE + INTERVAL '30 days'
+       ORDER BY ce.event_date ASC, ce.event_time ASC NULLS LAST`,
+      [partnershipId]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows.map(row => ({
+        id: row.id,
+        partnershipId: row.partnership_id,
+        addedBy: row.added_by_user_id,
+        addedByName: row.added_by_name,
+        title: row.title,
+        description: row.description,
+        date: row.event_date,
+        time: row.event_time,
+        isAllDay: row.is_all_day,
+        eventType: row.event_type,
+        createdAt: row.created_at
+      }))
+    });
+  } catch (error: any) {
+    console.error('[calendar] Get upcoming events error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch upcoming events'
+    });
+  }
+});
+
+/**
+ * GET /api/calendar/anniversaries
+ * Calculate relationship anniversaries and milestones
+ */
+router.get('/anniversaries', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const partnershipId = await getUserPartnershipId(userId);
+
+    if (!partnershipId) {
+      return res.status(400).json({
+        success: false,
+        message: 'No partnership found'
+      });
+    }
+
+    // Get couple's created date
+    const coupleResult = await query(
+      'SELECT created_at FROM couples WHERE id = $1',
+      [partnershipId]
+    );
+
+    if (coupleResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partnership not found'
+      });
+    }
+
+    const relationshipStart = new Date(coupleResult.rows[0].created_at);
+    const today = new Date();
+
+    // Calculate days together
+    const daysTogether = Math.floor((today.getTime() - relationshipStart.getTime()) / (1000 * 60 * 60 * 24));
+
+    // Calculate months together
+    let monthsTogether = (today.getFullYear() - relationshipStart.getFullYear()) * 12;
+    monthsTogether += today.getMonth() - relationshipStart.getMonth();
+
+    // Calculate years together
+    const yearsTogether = Math.floor(monthsTogether / 12);
+
+    // Calculate next milestones
+    const nextDay100 = new Date(relationshipStart);
+    nextDay100.setDate(nextDay100.getDate() + Math.ceil(daysTogether / 100) * 100);
+
+    const nextMonthAnniversary = new Date(relationshipStart);
+    nextMonthAnniversary.setMonth(relationshipStart.getMonth() + monthsTogether + 1);
+
+    const nextYearAnniversary = new Date(relationshipStart);
+    nextYearAnniversary.setFullYear(relationshipStart.getFullYear() + yearsTogether + 1);
+
+    res.json({
+      success: true,
+      data: {
+        relationshipStart: relationshipStart.toISOString().split('T')[0],
+        daysTogether,
+        monthsTogether,
+        yearsTogether,
+        nextMilestones: {
+          next100Days: nextDay100.toISOString().split('T')[0],
+          nextMonthAnniversary: nextMonthAnniversary.toISOString().split('T')[0],
+          nextYearAnniversary: nextYearAnniversary.toISOString().split('T')[0]
+        }
+      }
+    });
+  } catch (error: any) {
+    console.error('[calendar] Get anniversaries error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to calculate anniversaries'
     });
   }
 });
