@@ -23,7 +23,7 @@ async function getUserPartnershipId(userId: number): Promise<number | null> {
 router.post('/events', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const { date, time, title, description, eventType, isAllDay, location } = req.body;
+    const { date, time, endTime, title, description, eventType, isAllDay, location } = req.body;
 
     if (!date || !title) {
       return res.status(400).json({
@@ -52,10 +52,10 @@ router.post('/events', authenticateToken, async (req: AuthRequest, res) => {
     // Create calendar event
     const result = await query(
       `INSERT INTO calendar_events
-       (partnership_id, added_by_user_id, title, description, event_date, event_time, is_all_day, event_type, location, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+       (partnership_id, added_by_user_id, title, description, event_date, event_time, end_time, is_all_day, event_type, location, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
        RETURNING *`,
-      [partnershipId, userId, title, description || null, date, time || null, isAllDay !== false, eventType || 'other', location || null]
+      [partnershipId, userId, title, description || null, date, time || null, endTime || null, isAllDay !== false, eventType || 'other', location || null]
     );
 
     const event = result.rows[0];
@@ -70,6 +70,7 @@ router.post('/events', authenticateToken, async (req: AuthRequest, res) => {
         description: event.description,
         date: event.event_date,
         time: event.event_time,
+        endTime: event.end_time,
         isAllDay: event.is_all_day,
         eventType: event.event_type,
         location: event.location,
@@ -127,6 +128,7 @@ router.get('/events', authenticateToken, async (req: AuthRequest, res) => {
         description: row.description,
         date: row.event_date,
         time: row.event_time,
+        endTime: row.end_time,
         isAllDay: row.is_all_day,
         eventType: row.event_type,
         location: row.location,
@@ -218,7 +220,7 @@ router.put('/events/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
     const eventId = parseInt(req.params.id);
-    const { date, time, title, description, eventType, isAllDay, location } = req.body;
+    const { date, time, endTime, title, description, eventType, isAllDay, location } = req.body;
 
     const partnershipId = await getUserPartnershipId(userId);
     if (!partnershipId) {
@@ -233,16 +235,17 @@ router.put('/events/:id', authenticateToken, async (req: AuthRequest, res) => {
       `UPDATE calendar_events
        SET event_date = COALESCE($1, event_date),
            event_time = COALESCE($2, event_time),
-           title = COALESCE($3, title),
-           description = COALESCE($4, description),
-           event_type = COALESCE($5, event_type),
-           is_all_day = COALESCE($6, is_all_day),
-           location = COALESCE($7, location),
+           end_time = COALESCE($3, end_time),
+           title = COALESCE($4, title),
+           description = COALESCE($5, description),
+           event_type = COALESCE($6, event_type),
+           is_all_day = COALESCE($7, is_all_day),
+           location = COALESCE($8, location),
            updated_at = NOW()
-       WHERE id = $8
-         AND partnership_id = $9
+       WHERE id = $9
+         AND partnership_id = $10
        RETURNING *`,
-      [date, time, title, description, eventType, isAllDay, location, eventId, partnershipId]
+      [date, time, endTime, title, description, eventType, isAllDay, location, eventId, partnershipId]
     );
 
     if (result.rows.length === 0) {
@@ -264,6 +267,7 @@ router.put('/events/:id', authenticateToken, async (req: AuthRequest, res) => {
         description: event.description,
         date: event.event_date,
         time: event.event_time,
+        endTime: event.end_time,
         isAllDay: event.is_all_day,
         eventType: event.event_type,
         location: event.location,
