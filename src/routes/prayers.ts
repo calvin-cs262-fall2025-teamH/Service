@@ -102,7 +102,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
       `SELECT id, couple_id, title, description, is_answered, answered_at, created_at, updated_at
        FROM prayer_items
        WHERE couple_id = $1
-       ORDER BY is_answered ASC, created_at DESC`,
+       ORDER BY is_answered ASC, created_at DESC, id DESC`,
       [coupleId]
     );
 
