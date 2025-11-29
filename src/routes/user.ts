@@ -14,58 +14,69 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
     const userId = req.userId!;
 
     // 查询 users、couples 以及 profiles
-const result = await query(
-  `SELECT u.id, u.email, u.name AS user_name, u.couple_id, u.created_at,
+    const result = await query(
+      `SELECT u.id, u.email, u.name AS user_name, u.emoji, u.couple_id, u.created_at,
           p.name AS profile_name, p.date_of_birth, p.major, p.year, p.hobby,
           c.user1_id, c.user2_id
    FROM users u
    LEFT JOIN profiles p ON p.user_id = u.id
    LEFT JOIN couples c ON u.couple_id = c.id
    WHERE u.id = $1`,
-  [userId]
-);
+      [userId]
+    );
 
-if (result.rows.length === 0) {
-  return res.status(404).json({ success: false, message: 'User not found' });
-}
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
-const user = result.rows[0];
-const hasPartner = !!(user.couple_id && user.user1_id && user.user2_id);
+    const user = result.rows[0];
+    const hasPartner = !!(user.couple_id && user.user1_id && user.user2_id);
 
-// 获取 partner 信息
-let partner = null;
-if (hasPartner) {
-  const partnerId = user.user1_id === userId ? user.user2_id : user.user1_id;
-  const partnerResult = await query(
-    'SELECT id, email, name FROM users WHERE id = $1',
-    [partnerId]
-  );
-  if (partnerResult.rows.length > 0) {
-    partner = {
-      id: partnerResult.rows[0].id,
-      email: partnerResult.rows[0].email,
-      name: partnerResult.rows[0].name
-    };
-  }
-}
+    // 获取 partner 信息
+    let partner = null;
+    if (hasPartner) {
+      const partnerId = user.user1_id === userId ? user.user2_id : user.user1_id;
+      const partnerResult = await query(
+        `SELECT u.id, u.email, u.name, u.emoji,
+                p.date_of_birth, p.major, p.year, p.hobby
+         FROM users u
+         LEFT JOIN profiles p ON p.user_id = u.id
+         WHERE u.id = $1`,
+        [partnerId]
+      );
+      if (partnerResult.rows.length > 0) {
+        const pRow = partnerResult.rows[0];
+        partner = {
+          id: pRow.id,
+          email: pRow.email,
+          name: pRow.name,
+          emoji: pRow.emoji,
+          dateOfBirth: pRow.date_of_birth,
+          major: pRow.major,
+          year: pRow.year,
+          hobby: pRow.hobby
+        };
+      }
+    }
 
-res.json({
-  success: true,
-  data: {
-    id: user.id,
-    email: user.email,
-    name: user.user_name,
-    coupleId: user.couple_id,
-    hasPartner,
-    partner,
-    createdAt: user.created_at,
-    // 新增 profile 信息
-    dateOfBirth: user.date_of_birth,
-    major: user.major,
-    year: user.year,
-    hobby: user.hobby
-  }
-});
+    res.json({
+      success: true,
+      data: {
+        id: user.id,
+        email: user.email,
+        name: user.user_name,
+        emoji: user.emoji,
+        coupleId: user.couple_id,
+        hasPartner,
+        partner,
+        createdAt: user.created_at,
+        // 新增 profile 信息
+        dateOfBirth: user.date_of_birth,
+        major: user.major,
+        year: user.year,
+        hobby: user.hobby
+      }
+    });
   } catch (error: any) {
     console.error('[user] Get profile error:', error);
     res.status(500).json({
@@ -82,7 +93,7 @@ res.json({
 router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const { name, dateOfBirth, major, year, hobby } = req.body || {};
+    const { name, emoji, dateOfBirth, major, year, hobby } = req.body || {};
 
     const normalizeField = (value: unknown) => {
       if (value === undefined) return undefined;
@@ -99,6 +110,8 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
+    const normalizedEmoji = normalizeField(emoji);
+
     const normalizedProfile = {
       dateOfBirth: normalizeField(dateOfBirth),
       major: normalizeField(major),
@@ -109,7 +122,7 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       (field) => (req.body || {})[field] !== undefined
     );
 
-    const hasPayload = normalizedName !== undefined || profileFieldsProvided;
+    const hasPayload = normalizedName !== undefined || normalizedEmoji !== undefined || profileFieldsProvided;
     if (!hasPayload) {
       return res.status(400).json({
         success: false,
@@ -123,10 +136,25 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
         throw new Error('USER_NOT_FOUND');
       }
 
-      if (normalizedName !== undefined) {
+      if (normalizedName !== undefined || normalizedEmoji !== undefined) {
+        const updates = [];
+        const values = [];
+        let paramCount = 1;
+
+        if (normalizedName !== undefined) {
+          updates.push(`name = $${paramCount++}`);
+          values.push(normalizedName);
+        }
+        if (normalizedEmoji !== undefined) {
+          updates.push(`emoji = $${paramCount++}`);
+          values.push(normalizedEmoji);
+        }
+        updates.push(`updated_at = NOW()`);
+        values.push(userId);
+
         await client.query(
-          'UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2',
-          [normalizedName, userId]
+          `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount}`,
+          values
         );
       }
 
@@ -153,7 +181,7 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
     });
 
     const updatedProfile = await query(
-      `SELECT u.id, u.email, u.name AS user_name, u.couple_id, u.created_at,
+      `SELECT u.id, u.email, u.name AS user_name, u.emoji, u.couple_id, u.created_at,
               p.date_of_birth, p.major, p.year, p.hobby,
               c.user1_id, c.user2_id
        FROM users u
@@ -177,6 +205,7 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
         id: user.id,
         email: user.email,
         name: user.user_name,
+        emoji: user.emoji,
         coupleId: user.couple_id,
         dateOfBirth: user.date_of_birth,
         major: user.major,
@@ -195,7 +224,8 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
     console.error('[user] Update profile error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update profile'
+      message: 'Failed to update profile',
+      error: error.message
     });
   }
 });
