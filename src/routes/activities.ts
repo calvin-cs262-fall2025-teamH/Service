@@ -73,7 +73,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
       },
       message: 'Activity created successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[activities] Create error:', error);
     res.status(500).json({
       success: false,
@@ -124,7 +124,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
         createdAt: row.created_at
       }))
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[activities] Get all error:', error);
     res.status(500).json({
       success: false,
@@ -200,7 +200,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
         }))
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[activities] Get one error:', error);
     res.status(500).json({
       success: false,
@@ -270,7 +270,7 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res) => {
       data: result.rows[0],
       message: 'Activity updated successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[activities] Update error:', error);
     res.status(500).json({
       success: false,
@@ -320,7 +320,7 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
       success: true,
       message: 'Activity deleted successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[activities] Delete error:', error);
     res.status(500).json({
       success: false,
@@ -395,7 +395,7 @@ router.post('/:id/photos', authenticateToken, async (req: AuthRequest, res) => {
       },
       message: 'Photo added successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[activities] Add photo error:', error);
     res.status(500).json({
       success: false,
@@ -452,7 +452,7 @@ router.delete('/:activityId/photos/:photoId', authenticateToken, async (req: Aut
       success: true,
       message: 'Photo deleted successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[activities] Delete photo error:', error);
     res.status(500).json({
       success: false,
@@ -522,7 +522,7 @@ router.get('/timeline/all', authenticateToken, async (req: AuthRequest, res) => 
         photos: row.photos
       }))
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[activities] Get timeline error:', error);
     res.status(500).json({
       success: false,
