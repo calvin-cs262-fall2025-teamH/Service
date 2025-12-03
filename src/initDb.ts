@@ -35,9 +35,10 @@ async function main() {
 
     await admin.query(`CREATE DATABASE ${TARGET_DB}`);
     console.log(`✅  Created database "${TARGET_DB}" successfully.`);
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const error = e as { code?: string };
 
-    if (e.code === '42P04') {
+    if (error?.code === '42P04') {
       console.log(`ℹ️  Database "${TARGET_DB}" already exists (42P04).`);
     } else {
       console.error('❌  Failed to create database:', e);
