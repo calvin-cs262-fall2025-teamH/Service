@@ -8,7 +8,7 @@ export default defineConfig([
   {
     ignores: ["**/generated/**", "**/node_modules/**", "**/dist/**"]
   },
-  { files: ["**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"], plugins: { js }, extends: ["js/recommended"], languageOptions: { globals: globals.node } },
+  { files: ["**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"], plugins: { js }, extends: ["js/recommended"], languageOptions: { globals: { ...globals.node, structuredClone: 'readonly' } } },
   tseslint.configs.recommended,
   pluginReact.configs.flat.recommended,
 ]);
