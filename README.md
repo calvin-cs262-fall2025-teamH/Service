@@ -1,4 +1,4 @@
-# CoupleBond Backend Service
+# CoupleBond Backend Service #
 
 **Production-ready** backend API for the CoupleBond mobile application. Handles authentication, couple pairing, activities, prayers, calendar events, and more.
 
@@ -311,4 +311,6 @@ Make sure you're using the correct database credentials in your `.env` file.
 
 ### Port Already in Use
 If port 4000 is already in use, change the `PORT` in your `.env` file.
+
+
 
