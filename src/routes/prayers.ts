@@ -71,7 +71,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
       },
       message: 'Prayer item created successfully'
     });
-  } catch (error: any) {
+  } catch (error: Error) {
     console.error('[prayers] Create error:', error);
     res.status(500).json({
       success: false,
@@ -119,7 +119,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
         updatedAt: row.updated_at
       }))
     });
-  } catch (error: any) {
+  } catch (error: Error) {
     console.error('[prayers] Get all error:', error);
     res.status(500).json({
       success: false,
@@ -182,7 +182,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
         updatedAt: prayer.updated_at
       }
     });
-  } catch (error: any) {
+  } catch (error: Error) {
     console.error('[prayers] Get one error:', error);
     res.status(500).json({
       success: false,
@@ -258,7 +258,7 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res) => {
       },
       message: 'Prayer item updated successfully'
     });
-  } catch (error: any) {
+  } catch (error: Error) {
     console.error('[prayers] Update error:', error);
     res.status(500).json({
       success: false,
@@ -334,7 +334,7 @@ router.put('/:id/toggle-answered', authenticateToken, async (req: AuthRequest, r
       },
       message: `Prayer marked as ${newAnswered ? 'answered' : 'unanswered'}`
     });
-  } catch (error: any) {
+  } catch (error: Error) {
     console.error('[prayers] Toggle answered error:', error);
     res.status(500).json({
       success: false,
@@ -384,7 +384,7 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
       success: true,
       message: 'Prayer item deleted successfully'
     });
-  } catch (error: any) {
+  } catch (error: Error) {
     console.error('[prayers] Delete error:', error);
     res.status(500).json({
       success: false,
