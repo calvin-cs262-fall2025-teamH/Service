@@ -39,7 +39,7 @@ export { pool };
 /**
  * Execute a single query
  */
-export const query = (text: string, params?: any[]): Promise<QueryResult> => {
+export const query = (text: string, params?: unknown[]): Promise<QueryResult> => {
   return pool.query(text, params);
 };
 
@@ -100,7 +100,7 @@ function extractHostPort(connStr: string) {
     const m = connStr.match(/@([^/]+)\//);
     if (!m || !m[1]) return null;
     return m[1];
-  } catch (e) {
+  } catch {
     return null;
   }
 }

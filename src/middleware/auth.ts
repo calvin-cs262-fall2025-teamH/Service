@@ -38,7 +38,7 @@ export const authenticateToken = (
     req.userEmail = payload.email;
 
     next();
-  } catch (error: any) {
+  } catch (error: Error) {
     console.error('Auth middleware error:', error.message);
     return res.status(401).json({
       success: false,
