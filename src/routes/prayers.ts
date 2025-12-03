@@ -117,7 +117,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
         answeredAt: row.answered_at,
         createdAt: row.created_at,
         updatedAt: row.updated_at
-      })
+      }))
     });
   } catch (error: Error) {
     console.error('[prayers] Get all error:', error);
