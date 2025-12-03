@@ -79,12 +79,12 @@ router.post('/events', authenticateToken, async (req: AuthRequest, res) => {
       },
       message: 'Calendar event created successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[calendar] Create event error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to create calendar event',
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -138,7 +138,7 @@ router.get('/events', authenticateToken, async (req: AuthRequest, res) => {
         updatedAt: row.updated_at
       }))
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[calendar] Get events error:', error);
     res.status(500).json({
       success: false,
@@ -203,7 +203,7 @@ router.get('/events/:id', authenticateToken, async (req: AuthRequest, res) => {
         updatedAt: event.updated_at
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[calendar] Get event error:', error);
     res.status(500).json({
       success: false,
@@ -276,7 +276,7 @@ router.put('/events/:id', authenticateToken, async (req: AuthRequest, res) => {
       },
       message: 'Calendar event updated successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[calendar] Update event error:', error);
     res.status(500).json({
       success: false,
@@ -322,7 +322,7 @@ router.delete('/events/:id', authenticateToken, async (req: AuthRequest, res) =>
       success: true,
       message: 'Calendar event deleted successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[calendar] Delete event error:', error);
     res.status(500).json({
       success: false,
@@ -377,7 +377,7 @@ router.get('/upcoming', authenticateToken, async (req: AuthRequest, res) => {
         createdAt: row.created_at
       }))
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[calendar] Get upcoming events error:', error);
     res.status(500).json({
       success: false,
@@ -452,7 +452,7 @@ router.get('/anniversaries', authenticateToken, async (req: AuthRequest, res) =>
         }
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[calendar] Get anniversaries error:', error);
     res.status(500).json({
       success: false,
