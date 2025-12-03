@@ -57,10 +57,10 @@ router.post('/create', authenticateToken, async (req: AuthRequest, res) => {
       },
       message: 'Couple created successfully. Share the invite code with your partner!'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[couple] Create couple error:', error);
 
-    if (error.message === 'ALREADY_HAS_COUPLE') {
+    if (error instanceof Error && error.message === 'ALREADY_HAS_COUPLE') {
       return res.status(400).json({
         success: false,
         message: 'You are already part of a couple'
@@ -146,7 +146,7 @@ router.post('/join', authenticateToken, async (req: AuthRequest, res) => {
       data: { coupleId },
       message: 'Successfully joined couple!'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[couple] Join couple error:', error);
 
     // Handle specific error cases
@@ -157,12 +157,14 @@ router.post('/join', authenticateToken, async (req: AuthRequest, res) => {
       CANNOT_JOIN_OWN_COUPLE: { status: 400, message: 'You cannot join your own couple' }
     };
 
-    const errorInfo = errorMessages[error.message];
-    if (errorInfo) {
-      return res.status(errorInfo.status).json({
-        success: false,
-        message: errorInfo.message
-      });
+    if (error instanceof Error) {
+      const errorInfo = errorMessages[error.message];
+      if (errorInfo) {
+        return res.status(errorInfo.status).json({
+          success: false,
+          message: errorInfo.message
+        });
+      }
     }
 
     res.status(500).json({
@@ -217,7 +219,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
         createdAt: couple.created_at
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[couple] Get couple error:', error);
     res.status(500).json({
       success: false,
@@ -281,10 +283,10 @@ router.delete('/leave', authenticateToken, async (req: AuthRequest, res) => {
       success: true,
       message: 'Successfully left couple'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[couple] Leave couple error:', error);
 
-    if (error.message === 'NO_COUPLE') {
+    if (error instanceof Error && error.message === 'NO_COUPLE') {
       return res.status(404).json({
         success: false,
         message: 'You are not part of any couple'
