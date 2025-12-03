@@ -84,7 +84,7 @@ router.post('/register', async (req, res) => {
       },
       message: 'Registration successful'
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[auth] Register error:', error);
     res.status(500).json({
       success: false,
@@ -149,7 +149,7 @@ router.post('/login', async (req, res) => {
       },
       message: 'Login successful'
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[auth] Login error:', error);
     res.status(500).json({
       success: false,
@@ -192,7 +192,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
         }
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[auth] Get user error:', error);
     res.status(500).json({
       success: false,
