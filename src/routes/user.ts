@@ -77,7 +77,7 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
         hobby: user.hobby
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[user] Get profile error:', error);
     res.status(500).json({
       success: false,
@@ -214,7 +214,7 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       },
       message: 'Profile updated successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error.message === 'USER_NOT_FOUND') {
       return res.status(404).json({
         success: false,
@@ -288,7 +288,7 @@ router.post('/partner/generate-code', authenticateToken, async (req: AuthRequest
       },
       message: 'Pairing code generated successfully. Share this code with your partner.'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[user] Generate code error:', error);
     res.status(500).json({
       success: false,
@@ -402,7 +402,7 @@ router.post('/partner/connect', authenticateToken, async (req: AuthRequest, res)
       },
       message: 'Successfully connected with your partner!'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[user] Connect partner error:', error);
 
     // Handle specific error cases
@@ -474,7 +474,7 @@ router.get('/partner', authenticateToken, async (req: AuthRequest, res) => {
         connectedAt: data.created_at
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[user] Get partner error:', error);
     console.error('[user] Error stack:', error.stack);
     res.status(500).json({
@@ -522,7 +522,7 @@ router.delete('/partner/unmatch', authenticateToken, async (req: AuthRequest, re
       success: true,
       message: 'Successfully disconnected from partner'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[user] Unmatch error:', error);
 
     if (error.message === 'NO_COUPLE') {
