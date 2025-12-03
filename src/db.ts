@@ -97,7 +97,7 @@ export async function pingDb(): Promise<void> {
 function extractHostPort(connStr: string) {
   try {
     // match user:pass@host:port/db
-    const m = connStr.match(/@([^/]+)\// /);
+    const m = connStr.match(/@([^/]+)\//);
     if (!m || !m[1]) return null;
     return m[1];
   } catch {
