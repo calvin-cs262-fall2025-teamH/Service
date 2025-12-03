@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    Int                  @id @default(autoincrement())
+  email                 String               @unique
+  password              String
+  name                  String?
+  coupleId              Int?                 @unique
+  couple                Couple?              @relation("UserCouple", fields: [coupleId], references: [id])
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  anniversaryReminders  AnniversaryReminder[]
+}
+
+model Couple {
+  id             Int            @id @default(autoincrement())
+  inviteCode     String         @unique @default(cuid())
+  user1Id        Int?           @unique
+  user2Id        Int?           @unique
+  user1          User?          @relation("UserCouple")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  activities     Activity[]
+  prayerItems    PrayerItem[]
+}
+
+model Activity {
+  id            Int            @id @default(autoincrement())
+  coupleId      Int
+  couple        Couple         @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  date          DateTime
+  location      String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  photos        PhotoCollage[]
+  calendarEvent CalendarEvent?
+}
+
+model PhotoCollage {
+  id          Int      @id @default(autoincrement())
+  activityId  Int
+  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  photoUrl    String
+  caption     String?
+  createdAt   DateTime @default(now())
+}
+
+model CalendarEvent {
+  id          Int      @id @default(autoincrement())
+  activityId  Int      @unique
+  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  date        DateTime
+  title       String
+  location    String?
+  createdAt   DateTime @default(now())
+}
+
+model PrayerItem {
+  id        Int      @id @default(autoincrement())
+  coupleId  Int
+  couple    Couple   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AnniversaryReminder {
+  id                   Int      @id @default(autoincrement())
+  partnershipId        Int
+  anniversaryId        Int?
+  userId               Int
+  reminderType         String   // 'before_day', 'on_day', 'custom'
+  reminderDate         DateTime
+  reminderTime         DateTime?
+  isSent               Boolean  @default(false)
+  sentAt               DateTime?
+  notificationMethod   String   @default("push") // 'push', 'email', 'sms'
+  message              String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([partnershipId])
+  @@index([userId])
+  @@index([anniversaryId])
+  @@index([reminderDate])
+  @@index([isSent])
+}
