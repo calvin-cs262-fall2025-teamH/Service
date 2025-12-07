@@ -6,8 +6,7 @@
                     "dev":  "ts-node-dev --respawn --transpile-only src/index.ts",
                     "build":  "tsc",
                     "start":  "node dist/index.js",
-                    "lint":  "eslint .",
-                    "postinstall":  "npm rebuild bcrypt --build-from-source"
+                    "lint":  "eslint ."
                 },
     "dependencies":  {
                          "axios":  "^1.13.2",
