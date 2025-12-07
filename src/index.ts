@@ -1,4 +1,4 @@
-﻿import cors from 'cors';
+import cors from 'cors';
 import express from 'express';
 import { pingDb } from './db';
 import authRoutes from './routes/auth';
@@ -7,6 +7,7 @@ import coupleRoutes from './routes/couple';
 import activitiesRoutes from './routes/activities';
 import calendarRoutes from './routes/calendar';
 import prayersRoutes from './routes/prayers';
+import anniversaryRemindersRoutes from './routes/anniversaryReminders';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '4000', 10);
@@ -38,6 +39,7 @@ app.use('/api/couple', coupleRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/prayers', prayersRoutes);
+app.use('/api/anniversary-reminders', anniversaryRemindersRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
@@ -56,3 +58,4 @@ start().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+
