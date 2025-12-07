@@ -18,7 +18,7 @@ async function getUserCoupleId(userId: number): Promise<number | null> {
 }
 
 // Helper to transform database row to API response format
-function transformReminderRow(row: any) {
+function transformReminderRow(row: Record<string, unknown>) {
   return {
     id: row.id,
     coupleId: row.couple_id,
@@ -229,7 +229,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
     } = req.body;
 
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 1;
 
     if (title !== undefined) {
@@ -390,3 +390,4 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 export default router;
+
