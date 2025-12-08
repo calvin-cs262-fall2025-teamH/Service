@@ -1,6 +1,6 @@
 // Service/src/routes/auth.ts
 import { Router } from 'express';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { query } from '../db';
 import { authenticateToken, generateToken, AuthRequest } from '../middleware/auth';
 
