@@ -249,20 +249,32 @@ router.post('/custom/append', authenticateToken, async (req: AuthRequest, res) =
         const placeholders: string[] = [];
         let paramIndex = 1;
 
-        // Fetch verses
-        const daysWithVerses = await Promise.all(generatedDays.map(async (day) => {
-            let scriptureText = '';
-            try {
-                // Use a timeout to prevent hanging
-                const response = await axios.get(`https://bible-api.com/${encodeURIComponent(day.firstVerseReference)}`, { timeout: 3000 });
-                if (response.data && response.data.text) {
-                    scriptureText = response.data.text.trim();
+        // Fetch verses with concurrency limit
+        const daysWithVerses = [];
+        const BATCH_SIZE = 5; // Process 5 requests at a time
+        
+        for (let i = 0; i < generatedDays.length; i += BATCH_SIZE) {
+            const batch = generatedDays.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.all(batch.map(async (day) => {
+                let scriptureText = '';
+                try {
+                    // Use a timeout to prevent hanging
+                    const response = await axios.get(`https://bible-api.com/${encodeURIComponent(day.firstVerseReference)}`, { timeout: 5000 });
+                    if (response.data && response.data.text) {
+                        scriptureText = response.data.text.trim();
+                    }
+                } catch (e: any) {
+                    console.error(`Failed to fetch verse for ${day.firstVerseReference}:`, e.message || e);
                 }
-            } catch (e) {
-                console.error(`Failed to fetch verse for ${day.firstVerseReference}`);
+                return { ...day, scriptureText };
+            }));
+            daysWithVerses.push(...batchResults);
+            
+            // Small delay between batches to be polite to the API
+            if (i + BATCH_SIZE < generatedDays.length) {
+                await new Promise(resolve => setTimeout(resolve, 300));
             }
-            return { ...day, scriptureText };
-        }));
+        }
 
         daysWithVerses.forEach((day, index) => {
           placeholders.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3})`);
