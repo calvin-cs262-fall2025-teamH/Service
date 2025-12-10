@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import axios from 'axios';
 import { query } from '../db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { generateReadingPlan } from '../lib/bibleData';
@@ -43,7 +44,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
             id, 
             day_number, 
             reference as title, 
-            reference as scripture_text, 
+            COALESCE(scripture_text, reference) as scripture_text, 
             is_completed, 
             completed_at 
           FROM custom_plan_days 
@@ -248,15 +249,30 @@ router.post('/custom/append', authenticateToken, async (req: AuthRequest, res) =
         const placeholders: string[] = [];
         let paramIndex = 1;
 
-        generatedDays.forEach((day, index) => {
-          placeholders.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2})`);
+        // Fetch verses
+        const daysWithVerses = await Promise.all(generatedDays.map(async (day) => {
+            let scriptureText = '';
+            try {
+                // Use a timeout to prevent hanging
+                const response = await axios.get(`https://bible-api.com/${encodeURIComponent(day.firstVerseReference)}`, { timeout: 3000 });
+                if (response.data && response.data.text) {
+                    scriptureText = response.data.text.trim();
+                }
+            } catch (e) {
+                console.error(`Failed to fetch verse for ${day.firstVerseReference}`);
+            }
+            return { ...day, scriptureText };
+        }));
+
+        daysWithVerses.forEach((day, index) => {
+          placeholders.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3})`);
           // Adjust day number to be sequential from current max
-          values.push(planId, currentMaxDay + index + 1, day.reference);
-          paramIndex += 3;
+          values.push(planId, currentMaxDay + index + 1, day.reference, day.scriptureText);
+          paramIndex += 4;
         });
 
         const queryText = `
-          INSERT INTO custom_plan_days (plan_id, day_number, reference)
+          INSERT INTO custom_plan_days (plan_id, day_number, reference, scripture_text)
           VALUES ${placeholders.join(', ')}
         `;
 

@@ -78,8 +78,8 @@ export function generateReadingPlan(
   endBook: string,
   endChapter: number,
   chaptersPerDay: number
-): { day: number; reference: string }[] {
-  const plan: { day: number; reference: string }[] = [];
+): { day: number; reference: string; firstVerseReference: string }[] {
+  const plan: { day: number; reference: string; firstVerseReference: string }[] = [];
   let currentBookIndex = getBookIndex(startBook);
   let currentChapter = startChapter;
   const endBookIndex = getBookIndex(endBook);
@@ -96,6 +96,7 @@ export function generateReadingPlan(
   ) {
     let chaptersToday = 0;
     const startRef = `${BIBLE_BOOKS[currentBookIndex].name} ${currentChapter}`;
+    const firstVerseReference = `${startRef}:1`;
     let endRef = '';
 
     while (chaptersToday < chaptersPerDay) {
@@ -140,7 +141,7 @@ export function generateReadingPlan(
         }
     }
 
-    plan.push({ day, reference });
+    plan.push({ day, reference, firstVerseReference });
     day++;
   }
 
