@@ -8,6 +8,7 @@ import activitiesRoutes from './routes/activities';
 import calendarRoutes from './routes/calendar';
 import prayersRoutes from './routes/prayers';
 import anniversaryRemindersRoutes from './routes/anniversaryReminders';
+import devotionalsRoutes from './routes/devotionals';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '4000', 10);
@@ -40,6 +41,7 @@ app.use('/api/activities', activitiesRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/prayers', prayersRoutes);
 app.use('/api/anniversary-reminders', anniversaryRemindersRoutes);
+app.use('/api/devotionals', devotionalsRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

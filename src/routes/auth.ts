@@ -116,9 +116,9 @@ router.post('/login', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({
+      return res.status(404).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Account does not exist'
       });
     }
 
@@ -130,7 +130,7 @@ router.post('/login', async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid password'
       });
     }
 
