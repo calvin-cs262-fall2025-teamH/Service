@@ -71,7 +71,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 
     // Create anniversary reminder - match the exact table structure
     const result = await pool.query(
-      `INSERT INTO anniversary_reminders 
+      `INSERT INTO anniversary_reminders
        (couple_id, user_id, title, description, reminder_date, reminder_days_before, is_recurring, is_enabled, reminder_type, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, 'push', NOW(), NOW())
        RETURNING *`,
@@ -107,7 +107,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await pool.query(
-      `SELECT * FROM anniversary_reminders 
+      `SELECT * FROM anniversary_reminders
        WHERE couple_id = $1
        ORDER BY reminder_date ASC`,
       [coupleId]
@@ -141,8 +141,8 @@ router.get('/upcoming', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await pool.query(
-      `SELECT * FROM anniversary_reminders 
-       WHERE couple_id = $1 
+      `SELECT * FROM anniversary_reminders
+       WHERE couple_id = $1
        AND is_enabled = true
        AND reminder_date >= CURRENT_DATE
        AND reminder_date <= CURRENT_DATE + INTERVAL '30 days'
@@ -179,7 +179,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await pool.query(
-      `SELECT * FROM anniversary_reminders 
+      `SELECT * FROM anniversary_reminders
        WHERE id = $1 AND couple_id = $2`,
       [reminderId, coupleId]
     );
@@ -274,7 +274,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
     values.push(reminderId, coupleId);
 
     const result = await pool.query(
-      `UPDATE anniversary_reminders 
+      `UPDATE anniversary_reminders
        SET ${updates.join(', ')}
        WHERE id = $${paramCount} AND couple_id = $${paramCount + 1}
        RETURNING *`,
@@ -318,7 +318,7 @@ router.put('/:id/toggle', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await pool.query(
-      `UPDATE anniversary_reminders 
+      `UPDATE anniversary_reminders
        SET is_enabled = NOT is_enabled, updated_at = NOW()
        WHERE id = $1 AND couple_id = $2
        RETURNING *`,
@@ -362,7 +362,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await pool.query(
-      `DELETE FROM anniversary_reminders 
+      `DELETE FROM anniversary_reminders
        WHERE id = $1 AND couple_id = $2
        RETURNING id`,
       [reminderId, coupleId]
@@ -420,7 +420,7 @@ router.get('/:id/checklist', async (req: AuthRequest, res: Response) => {
 
     const result = await pool.query(
       `SELECT id, reminder_id, title, is_completed, created_at, updated_at
-       FROM reminder_checklist_items 
+       FROM reminder_checklist_items
        WHERE reminder_id = $1
        ORDER BY created_at ASC`,
       [reminderId]
@@ -566,7 +566,7 @@ router.put('/:id/checklist/:itemId', async (req: AuthRequest, res: Response) => 
     values.push(itemId, reminderId);
 
     const result = await pool.query(
-      `UPDATE reminder_checklist_items 
+      `UPDATE reminder_checklist_items
        SET ${updates.join(', ')}
        WHERE id = $${paramCount} AND reminder_id = $${paramCount + 1}
        RETURNING *`,
@@ -631,7 +631,7 @@ router.delete('/:id/checklist/:itemId', async (req: AuthRequest, res: Response) 
     }
 
     const result = await pool.query(
-      `DELETE FROM reminder_checklist_items 
+      `DELETE FROM reminder_checklist_items
        WHERE id = $1 AND reminder_id = $2
        RETURNING id`,
       [itemId, reminderId]

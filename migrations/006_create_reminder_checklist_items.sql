@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS reminder_checklist_items (
   is_completed BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  
+
   CONSTRAINT fk_reminder_checklist_reminder
     FOREIGN KEY (reminder_id)
     REFERENCES anniversary_reminders(id)
