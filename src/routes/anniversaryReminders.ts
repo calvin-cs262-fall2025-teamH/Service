@@ -389,5 +389,214 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ==========================================
+// Checklist Routes
+// ==========================================
+
+// Get checklist items for a reminder
+router.get('/:id/checklist', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const coupleId = await getUserCoupleId(userId);
+    const reminderId = parseInt(req.params.id);
+
+    if (!coupleId) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Verify reminder belongs to couple
+    const reminderCheck = await pool.query(
+      'SELECT id FROM anniversary_reminders WHERE id = $1 AND couple_id = $2',
+      [reminderId, coupleId]
+    );
+
+    if (reminderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Reminder not found' });
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM reminder_checklist_items WHERE reminder_id = $1 ORDER BY created_at ASC',
+      [reminderId]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows.map(row => ({
+        id: row.id,
+        reminderId: row.reminder_id,
+        content: row.content,
+        isCompleted: row.is_completed,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }))
+    });
+  } catch (error) {
+    console.error('[anniversaryReminders] Get checklist error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Create checklist item
+router.post('/:id/checklist', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const coupleId = await getUserCoupleId(userId);
+    const reminderId = parseInt(req.params.id);
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, message: 'Content is required' });
+    }
+
+    if (!coupleId) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Verify reminder belongs to couple
+    const reminderCheck = await pool.query(
+      'SELECT id FROM anniversary_reminders WHERE id = $1 AND couple_id = $2',
+      [reminderId, coupleId]
+    );
+
+    if (reminderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Reminder not found' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO reminder_checklist_items (reminder_id, content)
+       VALUES ($1, $2)
+       RETURNING *`,
+      [reminderId, content.trim()]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        id: result.rows[0].id,
+        reminderId: result.rows[0].reminder_id,
+        content: result.rows[0].content,
+        isCompleted: result.rows[0].is_completed,
+        createdAt: result.rows[0].created_at,
+        updatedAt: result.rows[0].updated_at
+      }
+    });
+  } catch (error) {
+    console.error('[anniversaryReminders] Create checklist item error:', error);
+    res.status(500).json({ success: false, message: `Internal server error: ${(error as any).message}` });
+  }
+});
+
+// Update checklist item
+router.put('/:id/checklist/:itemId', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const coupleId = await getUserCoupleId(userId);
+    const reminderId = parseInt(req.params.id);
+    const itemId = parseInt(req.params.itemId);
+    const { content, isCompleted } = req.body;
+
+    if (!coupleId) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Verify reminder belongs to couple
+    const reminderCheck = await pool.query(
+      'SELECT id FROM anniversary_reminders WHERE id = $1 AND couple_id = $2',
+      [reminderId, coupleId]
+    );
+
+    if (reminderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Reminder not found' });
+    }
+
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    let paramCount = 1;
+
+    if (content !== undefined) {
+      updates.push(`content = $${paramCount}`);
+      values.push(content);
+      paramCount++;
+    }
+    if (isCompleted !== undefined) {
+      updates.push(`is_completed = $${paramCount}`);
+      values.push(isCompleted);
+      paramCount++;
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(itemId, reminderId);
+
+    const result = await pool.query(
+      `UPDATE reminder_checklist_items 
+       SET ${updates.join(', ')}
+       WHERE id = $${paramCount} AND reminder_id = $${paramCount + 1}
+       RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Item not found' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: result.rows[0].id,
+        reminderId: result.rows[0].reminder_id,
+        content: result.rows[0].content,
+        isCompleted: result.rows[0].is_completed,
+        createdAt: result.rows[0].created_at,
+        updatedAt: result.rows[0].updated_at
+      }
+    });
+  } catch (error) {
+    console.error('[anniversaryReminders] Update checklist item error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Delete checklist item
+router.delete('/:id/checklist/:itemId', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const coupleId = await getUserCoupleId(userId);
+    const reminderId = parseInt(req.params.id);
+    const itemId = parseInt(req.params.itemId);
+
+    if (!coupleId) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Verify reminder belongs to couple
+    const reminderCheck = await pool.query(
+      'SELECT id FROM anniversary_reminders WHERE id = $1 AND couple_id = $2',
+      [reminderId, coupleId]
+    );
+
+    if (reminderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Reminder not found' });
+    }
+
+    const result = await pool.query(
+      'DELETE FROM reminder_checklist_items WHERE id = $1 AND reminder_id = $2 RETURNING id',
+      [itemId, reminderId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Item not found' });
+    }
+
+    res.json({ success: true, message: 'Item deleted' });
+  } catch (error) {
+    console.error('[anniversaryReminders] Delete checklist item error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 export default router;
 
