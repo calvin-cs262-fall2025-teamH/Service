@@ -30,6 +30,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 
     // Fetch plans and join with progress
     // Include both global plans (couple_id IS NULL) and couple-specific plans
+    // Exclude plans hidden by the couple
     const result = await query(`
       SELECT
         dp.*,
@@ -39,7 +40,12 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
       FROM devotional_plans dp
       LEFT JOIN couple_devotional_progress cdp
         ON dp.id = cdp.plan_id AND cdp.couple_id = $1
-      WHERE dp.category = $2 AND (dp.couple_id IS NULL OR dp.couple_id = $1)
+      WHERE dp.category = $2 
+        AND (dp.couple_id IS NULL OR dp.couple_id = $1)
+        AND NOT EXISTS (
+          SELECT 1 FROM hidden_devotional_plans hdp 
+          WHERE hdp.couple_id = $1 AND hdp.plan_id = dp.id
+        )
       ORDER BY dp.day_number ASC
     `, [coupleId, category]);
 
@@ -174,12 +180,37 @@ router.delete('/custom/items', authenticateToken, async (req: AuthRequest, res) 
       return res.status(400).json({ success: false, message: 'No couple found' });
     }
 
-    // Only delete items that belong to this couple (custom items)
-    // We should not delete global items (couple_id IS NULL)
-    await query(`
-      DELETE FROM devotional_plans 
-      WHERE id = ANY($1) AND couple_id = $2
-    `, [ids, coupleId]);
+    // Split IDs into custom and global to handle them differently
+    const plans = await query('SELECT id, couple_id FROM devotional_plans WHERE id = ANY($1)', [ids]);
+    
+    const customIds: number[] = [];
+    const globalIds: number[] = [];
+    
+    for (const plan of plans.rows) {
+      if (plan.couple_id === coupleId) {
+        customIds.push(plan.id);
+      } else if (plan.couple_id === null) {
+        globalIds.push(plan.id);
+      }
+    }
+    
+    // 1. Delete custom items (permanently)
+    if (customIds.length > 0) {
+      await query(`
+        DELETE FROM devotional_plans 
+        WHERE id = ANY($1) AND couple_id = $2
+      `, [customIds, coupleId]);
+    }
+    
+    // 2. Hide global items (for this couple)
+    if (globalIds.length > 0) {
+      for (const id of globalIds) {
+        await query(
+          'INSERT INTO hidden_devotional_plans (couple_id, plan_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [coupleId, id]
+        );
+      }
+    }
 
     res.json({ success: true, message: 'Items deleted' });
   } catch (error) {
