@@ -107,15 +107,22 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await pool.query(
-      `SELECT * FROM anniversary_reminders
-       WHERE couple_id = $1
-       ORDER BY reminder_date ASC`,
+      `SELECT ar.*,
+        (SELECT COUNT(*) FROM reminder_checklist_items rci
+         WHERE rci.reminder_id = ar.id
+        ) as checklist_count
+       FROM anniversary_reminders ar
+       WHERE ar.couple_id = $1
+       ORDER BY ar.reminder_date ASC`,
       [coupleId]
     );
 
     res.json({
       success: true,
-      data: result.rows.map(transformReminderRow),
+      data: result.rows.map(row => ({
+        ...transformReminderRow(row),
+        checklistCount: parseInt(row.checklist_count || '0'),
+      })),
     });
   } catch (error: unknown) {
     console.error('[anniversaryReminders] Get all error:', error);
@@ -419,7 +426,7 @@ router.get('/:id/checklist', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await pool.query(
-      `SELECT id, reminder_id, title, is_completed, created_at, updated_at
+      `SELECT id, reminder_id, title, is_completed, created_at, updated_at, created_by, is_shared
        FROM reminder_checklist_items
        WHERE reminder_id = $1
        ORDER BY created_at ASC`,
@@ -435,6 +442,8 @@ router.get('/:id/checklist', async (req: AuthRequest, res: Response) => {
         isCompleted: row.is_completed,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        createdBy: row.created_by,
+        isShared: row.is_shared,
       })),
     });
   } catch (error: unknown) {
@@ -483,10 +492,10 @@ router.post('/:id/checklist', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO reminder_checklist_items (reminder_id, title, is_completed, created_at, updated_at)
-       VALUES ($1, $2, FALSE, NOW(), NOW())
+      `INSERT INTO reminder_checklist_items (reminder_id, title, is_completed, created_at, updated_at, created_by, is_shared)
+       VALUES ($1, $2, FALSE, NOW(), NOW(), $3, TRUE)
        RETURNING *`,
-      [reminderId, title.trim()]
+      [reminderId, title.trim(), userId]
     );
 
     res.json({
@@ -498,6 +507,8 @@ router.post('/:id/checklist', async (req: AuthRequest, res: Response) => {
         isCompleted: result.rows[0].is_completed,
         createdAt: result.rows[0].created_at,
         updatedAt: result.rows[0].updated_at,
+        createdBy: result.rows[0].created_by,
+        isShared: result.rows[0].is_shared,
       },
       message: 'Checklist item created successfully',
     });
@@ -589,6 +600,8 @@ router.put('/:id/checklist/:itemId', async (req: AuthRequest, res: Response) => 
         isCompleted: result.rows[0].is_completed,
         createdAt: result.rows[0].created_at,
         updatedAt: result.rows[0].updated_at,
+        createdBy: result.rows[0].created_by,
+        isShared: result.rows[0].is_shared,
       },
       message: 'Checklist item updated successfully',
     });
