@@ -30,7 +30,6 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 
     // Fetch plans and join with progress
     // Include both global plans (couple_id IS NULL) and couple-specific plans
-    // Exclude plans hidden by the couple
     const result = await query(`
       SELECT
         dp.*,
@@ -42,10 +41,6 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
         ON dp.id = cdp.plan_id AND cdp.couple_id = $1
       WHERE dp.category = $2 
         AND (dp.couple_id IS NULL OR dp.couple_id = $1)
-        AND NOT EXISTS (
-          SELECT 1 FROM hidden_devotional_plans hdp 
-          WHERE hdp.couple_id = $1 AND hdp.plan_id = dp.id
-        )
       ORDER BY dp.day_number ASC
     `, [coupleId, category]);
 
@@ -132,8 +127,8 @@ router.post('/custom/append', authenticateToken, async (req: AuthRequest, res) =
     const maxDayResult = await query(`
       SELECT MAX(day_number) as max_day 
       FROM devotional_plans 
-      WHERE category = 'year' AND (couple_id = $1 OR couple_id IS NULL)
-    `, [coupleId]);
+      WHERE category = 'year'
+    `);
     
     let currentDay = (maxDayResult.rows[0]?.max_day || 0) + 1;
 
@@ -149,10 +144,11 @@ router.post('/custom/append', authenticateToken, async (req: AuthRequest, res) =
       const reference = title; // Simple reference for now
       const scripture_text = `Read ${title}`; // Placeholder text
 
+      // Insert as GLOBAL plan (couple_id = NULL) so all users can see it
       await query(`
         INSERT INTO devotional_plans (category, day_number, title, reference, scripture_text, couple_id)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, ['year', currentDay, title, reference, scripture_text, coupleId]);
+        VALUES ($1, $2, $3, $4, $5, NULL)
+      `, ['year', currentDay, title, reference, scripture_text]);
 
       currentDay++;
     }
@@ -180,37 +176,13 @@ router.delete('/custom/items', authenticateToken, async (req: AuthRequest, res) 
       return res.status(400).json({ success: false, message: 'No couple found' });
     }
 
-    // Split IDs into custom and global to handle them differently
-    const plans = await query('SELECT id, couple_id FROM devotional_plans WHERE id = ANY($1)', [ids]);
-    
-    const customIds: number[] = [];
-    const globalIds: number[] = [];
-    
-    for (const plan of plans.rows) {
-      if (plan.couple_id === coupleId) {
-        customIds.push(plan.id);
-      } else if (plan.couple_id === null) {
-        globalIds.push(plan.id);
-      }
-    }
-    
-    // 1. Delete custom items (permanently)
-    if (customIds.length > 0) {
-      await query(`
-        DELETE FROM devotional_plans 
-        WHERE id = ANY($1) AND couple_id = $2
-      `, [customIds, coupleId]);
-    }
-    
-    // 2. Hide global items (for this couple)
-    if (globalIds.length > 0) {
-      for (const id of globalIds) {
-        await query(
-          'INSERT INTO hidden_devotional_plans (couple_id, plan_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-          [coupleId, id]
-        );
-      }
-    }
+    // Delete items (whether custom or global)
+    // Since we are treating 'year' plans as global now, we allow deleting them by ID
+    // Note: This will delete for EVERYONE if it's a global plan
+    await query(`
+      DELETE FROM devotional_plans 
+      WHERE id = ANY($1)
+    `, [ids]);
 
     res.json({ success: true, message: 'Items deleted' });
   } catch (error) {
